@@ -1,0 +1,26 @@
+{
+  "name": "perpetual-dystopia-vault",
+  "version": "1.0.0",
+  "description": "roguelike survival explorer",
+  "main": "server.js",
+  "dependencies": {
+    "express": "^4.16.2"
+  },
+  "devDependencies": {
+    "nodemon": "^1.14.12"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "start": "nodemon server.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/declantvb/perpetual-dystopia-vault.git"
+  },
+  "author": "",
+  "license": "CC-BY-NC-SA-4.0",
+  "bugs": {
+    "url": "https://github.com/declantvb/perpetual-dystopia-vault/issues"
+  },
+  "homepage": "https://github.com/declantvb/perpetual-dystopia-vault#readme"
+}
