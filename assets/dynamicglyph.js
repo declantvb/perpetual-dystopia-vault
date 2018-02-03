@@ -103,7 +103,7 @@ Game.DynamicGlyph.prototype.raiseEvent = function(event) {
 Game.DynamicGlyph.prototype.details = function() {
     var details = [];
     var detailGroups = this.raiseEvent('details');
-    // Iterate through each return value, grabbing the detaisl from the arrays.
+    // Iterate through each return value, grabbing the details from the arrays.
     if (detailGroups) {
         for (var i = 0, l = detailGroups.length; i < l; i++) {
             if (detailGroups[i]) {

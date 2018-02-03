@@ -46,7 +46,7 @@ var Game =  {
             this._currentScreen.exit();
         }
         // Clear the display
-        this.getDisplay().clear();
+        this._display.clear();
         // Update our current screen, notify it we entered
         // and then render it
         this._currentScreen = screen;
