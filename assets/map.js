@@ -215,6 +215,25 @@ Game.Map.prototype.updateEntityPosition = function(
 Game.Map.prototype.getItemsAt = function(x, y, z) {
     return this._items[x + ',' + y + ',' + z];
 };
+Game.Map.prototype.getItemsWithinRadius = function(centerX, centerY,
+                                                      centerZ, radius) {
+    results = [];
+    // Determine our bounds
+    var leftX = centerX - radius;
+    var rightX = centerX + radius;
+    var topY = centerY - radius;
+    var bottomY = centerY + radius;
+    // Iterate through our entities, adding any which are within the bounds
+    for (var key in this._items) {
+        var item = this._items[key];
+        if (item.getX() >= leftX && item.getX() <= rightX && 
+            item.getY() >= topY && item.getY() <= bottomY &&
+            item.getZ() == centerZ) {
+            results.push(item);
+        }
+    }
+    return results;
+};
 
 Game.Map.prototype.setItemsAt = function(x, y, z, items) {
     // If our items array is empty, then delete the key from the table.

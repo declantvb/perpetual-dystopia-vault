@@ -69,3 +69,22 @@ Game.ItemMixins.Equippable = {
         }
     }
 };
+
+Game.ItemMixins.Butcherable = {
+    name: 'Butcherable',
+    init: function(template) {
+        this._potentialTemplates = template['potentialTemplates'] || [];
+    },
+    getPotentialTemplates: function() {
+        return this._potentialTemplates;
+    },
+    listeners: {
+        'details': function() {
+            var results = [];
+            if (this.getPotentialTemplates().length > 0) {
+                results.push({key: 'butchering results', value: this.getPotentialTemplates()});
+            }
+            return results;
+        }
+    }
+};

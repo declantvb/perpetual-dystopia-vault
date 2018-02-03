@@ -20,8 +20,8 @@ Game.EntityRepository = new Game.Repository('entities', Game.Entity);
 
 Game.EntityRepository.define('fungus', {
     name: 'fungus',
-    character: 'F',
-    foreground: 'green',
+    character: 'f',
+    foreground: 'orange',
     maxHp: 10,
     speed: 250,
     mixins: [Game.EntityMixins.FungusActor, Game.EntityMixins.Destructible,
@@ -30,11 +30,12 @@ Game.EntityRepository.define('fungus', {
 
 Game.EntityRepository.define('bat', {
     name: 'bat',
-    character: 'B',
-    foreground: 'white',
+    character: 'b',
+    foreground: 'lightgrey',
     maxHp: 5,
     attackValue: 4,
     speed: 2000,
+    corpseButcherTemplates: ['dagger'],
     mixins: [Game.EntityMixins.TaskActor, 
              Game.EntityMixins.Attacker, Game.EntityMixins.Destructible,
              Game.EntityMixins.CorpseDropper,
@@ -47,19 +48,21 @@ Game.EntityRepository.define('newt', {
     foreground: 'yellow',
     maxHp: 3,
     attackValue: 2,
+    corpseButcherTemplates: ['melon'],
     mixins: [Game.EntityMixins.TaskActor,
              Game.EntityMixins.Attacker, Game.EntityMixins.Destructible,
              Game.EntityMixins.CorpseDropper,
              Game.EntityMixins.ExperienceGainer, Game.EntityMixins.RandomStatGainer]
 });
 
-Game.EntityRepository.define('kobold', {
-    name: 'kobold',
-    character: 'k',
-    foreground: 'white',
-    maxHp: 6,
-    attackValue: 4,
-    sightRadius: 5,
+Game.EntityRepository.define('wolf', {
+    name: 'wolf',
+    character: 'w',
+    foreground: 'brown',
+    maxHp: 15,
+    attackValue: 5,
+    sightRadius: 4,
+    corpseButcherTemplates: ['apple'],
     tasks: ['hunt', 'wander'],
     mixins: [Game.EntityMixins.TaskActor, Game.EntityMixins.Sight,
              Game.EntityMixins.Attacker, Game.EntityMixins.Destructible,
@@ -67,31 +70,14 @@ Game.EntityRepository.define('kobold', {
              Game.EntityMixins.ExperienceGainer, Game.EntityMixins.RandomStatGainer]
 });
 
-Game.EntityRepository.define('giant zombie', {
-    name: 'giant zombie', 
-    character: 'Z',
-    foreground: 'teal',
-    maxHp: 30,
-    attackValue: 8,
-    defenseValue: 5,
-    level: 5,
-    sightRadius: 6,
-    mixins: [Game.EntityMixins.GiantZombieActor, Game.EntityMixins.Sight,
-             Game.EntityMixins.Attacker, Game.EntityMixins.Destructible,
-             Game.EntityMixins.CorpseDropper,
-             Game.EntityMixins.ExperienceGainer]
-}, {
-    disableRandomCreation: true
-});
-
-Game.EntityRepository.define('slime', {
-    name: 'slime',
-    character: 's',
-    foreground: 'lightGreen',
+Game.EntityRepository.define('deer', {
+    name: 'deer',
+    character: 'd',
+    foreground: 'tan',
     maxHp: 10,
-    attackValue: 5,
-    sightRadius: 3,
-    tasks: ['hunt', 'wander'],
+    attackValue: 4,
+    sightRadius: 6,
+    corpseButcherTemplates: ['rock'],
     mixins: [Game.EntityMixins.TaskActor, Game.EntityMixins.Sight,
              Game.EntityMixins.Attacker, Game.EntityMixins.Destructible,
              Game.EntityMixins.CorpseDropper,

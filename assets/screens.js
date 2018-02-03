@@ -224,6 +224,31 @@ Game.Screen.playScreen = {
                     this.showItemsSubScreen(Game.Screen.pickupScreen, items,
                         'There is nothing here to pick up.');
                 }
+            } else if (inputData.keyCode === ROT.VK_B) {
+                // Setup the butcher screen
+                var items = this._player.getMap().getItemsAt(this._player.getX(),
+                    this._player.getY(), this._player.getZ());
+
+                if (items) {
+
+                    return;
+                }
+
+                items = this._player.getMap().getItemsWithinRadius(this._player.getX(),
+                    this._player.getY(), this._player.getZ(), 1);
+
+                if (items) {
+
+                    return;
+                }
+
+                var inventory = this._player.getItems();
+
+            } else if (inputData.keyCode === ROT.VK_R) {
+                // Rest
+                Game.Screen.waitScreen.setup(20);
+                this.setSubScreen(Game.Screen.waitScreen);
+                return;
             } else {
                 // Not a valid key
                 return;
@@ -645,7 +670,7 @@ Game.Screen.TargetBasedScreen.prototype.render = function (display) {
     var topLeftY = offsets.y;
     var currentDepth = playScreen._player.getZ();
     var map = playScreen._player.getMap();
-    
+
     // This object will keep track of all visible map cells
     var visibleCells = {};
     // Find all visible cells and update the object
@@ -662,8 +687,7 @@ Game.Screen.TargetBasedScreen.prototype.render = function (display) {
         var glyph = Game.Glyph.unknown;
         var mapX = points[i].x + topLeftX;
         var mapY = points[i].y + topLeftY;
-        if (map.isExplored(mapX, mapY, currentDepth))
-        {
+        if (map.isExplored(mapX, mapY, currentDepth)) {
             // Fetch the glyph for the tile and render it to the screen
             // at the offset position.
             glyph = map.getTile(mapX, mapY, currentDepth);
@@ -684,7 +708,7 @@ Game.Screen.TargetBasedScreen.prototype.render = function (display) {
                 }
                 // Update the foreground color in case our glyph changed
                 foreground = glyph.getForeground();
-            }           
+            }
         }
         display.draw(points[i].x, points[i].y, glyph.getChar(), 'white', 'darkgreen');
     }
@@ -770,6 +794,58 @@ Game.Screen.lookScreen = new Game.Screen.TargetBasedScreen({
         }
     }
 });
+
+Game.Screen.waitScreen = {
+    setup: function () {
+        this._waiting = false;
+        this._turnsToWait = 0;
+        this._inputString = '';
+    },
+    render: function (display) {
+        var playScreen = Game.Screen.playScreen;
+        playScreen.renderTiles.call(playScreen, display);
+
+        if (this._waiting) {
+            display.drawText(0, Game.getScreenHeight() - 1, 'Resting for ' + this._turnsToWait + ' turns...');
+    
+            if (this._turnsToWait <= 0) {
+                Game.Screen.playScreen.setSubScreen(null);
+            }
+    
+            setTimeout(() => {
+                this._turnsToWait--;
+                
+                playScreen._player.getMap().getEngine().unlock();
+            }, 100);
+        } else {
+            display.drawText(0, Game.getScreenHeight() - 1, 'Turns to rest: ' + this._inputString);
+        }
+    },
+    handleInput: function (inputType, inputData) {
+        if (this._waiting) {
+            return;
+        }
+
+        // input wait time
+        if (inputType == 'keydown') {
+            if (inputData.keyCode === ROT.VK_RETURN) {
+                var num = parseInt(this._inputString, 10);
+                if (isNaN(num)) {
+                    //bad number
+                } else {
+                    this._turnsToWait = num;
+                    this._waiting = true;
+                }
+            }
+        } else if (inputType == 'keypress') {
+            var keyChar = String.fromCharCode(inputData.charCode);
+            if (!isNaN(parseInt(keyChar))) {
+                this._inputString += keyChar;
+            }
+        }
+        Game.refresh();
+    }
+};
 
 // Define our help screen
 Game.Screen.helpScreen = {
