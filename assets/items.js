@@ -34,7 +34,7 @@ Game.ItemRepository.define('corpse', {
     character: '%',
     foodValue: 75,
     consumptions: 1,
-    mixins: [Game.ItemMixins.Edible, Game.ItemMixins.Butcherable]
+    mixins: [Game.ItemMixins.Edible, Game.ItemMixins.Butcherable, Game.ItemMixins.Decays]
 }, {
     disableRandomCreation: true
 });

@@ -1,4 +1,4 @@
-Game.Map = function(tiles) {
+Game.Map = function (tiles) {
     this._tiles = tiles;
     // Cache dimensions
     this._depth = tiles.length
@@ -14,12 +14,28 @@ Game.Map = function(tiles) {
     // Create the engine and scheduler
     this._scheduler = new ROT.Scheduler.Speed();
     this._engine = new ROT.Engine(this._scheduler);
+    // Add the item update actor
+    this._scheduler.add({
+        _map: this,
+        name: 'Item Updater',
+        act: function () {
+            for (key in this._map._items) {
+                var items = this._map._items[key];
+                items.forEach(item => {
+                    item.raiseEvent('update');
+                });
+            }
+        },
+        getSpeed: function () {
+            return 1000;   
+        },
+    }, true);
     // Setup the explored array
     this._explored = new Array(this._depth);
     this._setupExploredArray();
 };
 
-Game.Map.prototype._setupExploredArray = function() {
+Game.Map.prototype._setupExploredArray = function () {
     for (var z = 0; z < this._depth; z++) {
         this._explored[z] = new Array(this._width);
         for (var x = 0; x < this._width; x++) {
@@ -32,18 +48,18 @@ Game.Map.prototype._setupExploredArray = function() {
 };
 
 // Standard getters
-Game.Map.prototype.getDepth = function() {
+Game.Map.prototype.getDepth = function () {
     return this._depth;
 };
-Game.Map.prototype.getWidth = function() {
+Game.Map.prototype.getWidth = function () {
     return this._width;
 };
-Game.Map.prototype.getHeight = function() {
+Game.Map.prototype.getHeight = function () {
     return this._height;
 };
 
 // Gets the tile for a given coordinate set
-Game.Map.prototype.getTile = function(x, y, z) {
+Game.Map.prototype.getTile = function (x, y, z) {
     // Make sure we are inside the bounds. If we aren't, return
     // null tile.
     if (x < 0 || x >= this._width || y < 0 || y >= this._height ||
@@ -54,27 +70,27 @@ Game.Map.prototype.getTile = function(x, y, z) {
     }
 };
 
-Game.Map.prototype.dig = function(x, y, z) {
+Game.Map.prototype.dig = function (x, y, z) {
     // If the tile is diggable, update it to a floor
     if (this.getTile(x, y, z).isDiggable()) {
         this._tiles[z][x][y] = Game.Tile.floorTile;
     }
 };
 
-Game.Map.prototype.isEmptyFloor = function(x, y, z) {
+Game.Map.prototype.isEmptyFloor = function (x, y, z) {
     // Check if the tile is floor and also has no entity
     return this.getTile(x, y, z) == Game.Tile.floorTile &&
-           !this.getEntityAt(x, y, z);
+        !this.getEntityAt(x, y, z);
 };
 
-Game.Map.prototype.setExplored = function(x, y, z, state) {
+Game.Map.prototype.setExplored = function (x, y, z, state) {
     // Only update if the tile is within bounds
     if (this.getTile(x, y, z) !== Game.Tile.nullTile) {
         this._explored[z][x][y] = state;
     }
 };
 
-Game.Map.prototype.isExplored = function(x, y, z) {
+Game.Map.prototype.isExplored = function (x, y, z) {
     // Only return the value if within bounds
     if (this.getTile(x, y, z) !== Game.Tile.nullTile) {
         return this._explored[z][x][y];
@@ -83,41 +99,41 @@ Game.Map.prototype.isExplored = function(x, y, z) {
     }
 };
 
-Game.Map.prototype.setupFov = function() {
+Game.Map.prototype.setupFov = function () {
     // Keep this in 'map' variable so that we don't lose it.
     var map = this;
     // Iterate through each depth level, setting up the field of vision
     for (var z = 0; z < this._depth; z++) {
         // We have to put the following code in it's own scope to prevent the
         // depth variable from being hoisted out of the loop.
-        (function() {
+        (function () {
             // For each depth, we need to create a callback which figures out
             // if light can pass through a given tile.
             var depth = z;
             map._fov.push(
-                new ROT.FOV.DiscreteShadowcasting(function(x, y) {
+                new ROT.FOV.DiscreteShadowcasting(function (x, y) {
                     return !map.getTile(x, y, depth).isBlockingLight();
-                }, {topology: 4}));
+                }, { topology: 4 }));
         })();
     }
 };
 
-Game.Map.prototype.getFov = function(depth) {
+Game.Map.prototype.getFov = function (depth) {
     return this._fov[depth];
 };
 
-Game.Map.prototype.getEngine = function() {
+Game.Map.prototype.getEngine = function () {
     return this._engine;
 };
-Game.Map.prototype.getEntities = function() {
+Game.Map.prototype.getEntities = function () {
     return this._entities;
 };
-Game.Map.prototype.getEntityAt = function(x, y, z){
+Game.Map.prototype.getEntityAt = function (x, y, z) {
     // Get the entity based on position key 
     return this._entities[x + ',' + y + ',' + z];
 };
-Game.Map.prototype.getEntitiesWithinRadius = function(centerX, centerY,
-                                                      centerZ, radius) {
+Game.Map.prototype.getEntitiesWithinRadius = function (centerX, centerY,
+    centerZ, radius) {
     results = [];
     // Determine our bounds
     var leftX = centerX - radius;
@@ -127,7 +143,7 @@ Game.Map.prototype.getEntitiesWithinRadius = function(centerX, centerY,
     // Iterate through our entities, adding any which are within the bounds
     for (var key in this._entities) {
         var entity = this._entities[key];
-        if (entity.getX() >= leftX && entity.getX() <= rightX && 
+        if (entity.getX() >= leftX && entity.getX() <= rightX &&
             entity.getY() >= topY && entity.getY() <= bottomY &&
             entity.getZ() == centerZ) {
             results.push(entity);
@@ -136,17 +152,17 @@ Game.Map.prototype.getEntitiesWithinRadius = function(centerX, centerY,
     return results;
 };
 
-Game.Map.prototype.getRandomFloorPosition = function(z) {
+Game.Map.prototype.getRandomFloorPosition = function (z) {
     // Randomly generate a tile which is a floor
     var x, y;
     do {
         x = Math.floor(Math.random() * this._width);
         y = Math.floor(Math.random() * this._height);
-    } while(!this.isEmptyFloor(x, y, z));
-    return {x: x, y: y, z: z};
+    } while (!this.isEmptyFloor(x, y, z));
+    return { x: x, y: y, z: z };
 };
 
-Game.Map.prototype.addEntityAtRandomPosition = function(entity, z) {
+Game.Map.prototype.addEntityAtRandomPosition = function (entity, z) {
     var position = this.getRandomFloorPosition(z);
     entity.setX(position.x);
     entity.setY(position.y);
@@ -154,7 +170,7 @@ Game.Map.prototype.addEntityAtRandomPosition = function(entity, z) {
     this.addEntity(entity);
 };
 
-Game.Map.prototype.addEntity = function(entity) {
+Game.Map.prototype.addEntity = function (entity) {
     // Update the entity's map
     entity.setMap(this);
     // Update the map with the entity's position
@@ -162,15 +178,15 @@ Game.Map.prototype.addEntity = function(entity) {
     // Check if this entity is an actor, and if so add
     // them to the scheduler
     if (entity.hasMixin('Actor')) {
-       this._scheduler.add(entity, true);
-    } 
+        this._scheduler.add(entity, true);
+    }
     // If the entity is the player, set the player.
     if (entity.hasMixin(Game.EntityMixins.PlayerActor)) {
         this._player = entity;
     }
 };
 
-Game.Map.prototype.removeEntity = function(entity) {
+Game.Map.prototype.removeEntity = function (entity) {
     // Remove the entity from the map
     var key = entity.getX() + ',' + entity.getY() + ',' + entity.getZ();
     if (this._entities[key] == entity) {
@@ -186,8 +202,25 @@ Game.Map.prototype.removeEntity = function(entity) {
     }
 };
 
+Game.Map.prototype.removeItem = function (item) {
+    // Remove the item from the map
+    var key = item.getX() + ',' + item.getY() + ',' + item.getZ();
+    var mapItems = this._items[key];
+    for (let i = 0; i < mapItems.length; i++) {
+        const mapItem = mapItems[i];
+        if (mapItem == item) {
+            mapItems.splice(i,1);
+        }
+    }
+    if (mapItems.length === 0) {
+        if (this._items[key]) {
+            delete this._items[key];
+        }
+    }
+};
 
-Game.Map.prototype.updateEntityPosition = function(
+
+Game.Map.prototype.updateEntityPosition = function (
     entity, oldX, oldY, oldZ) {
     // Delete the old key if it is the same entity
     // and we have old positions.
@@ -212,11 +245,11 @@ Game.Map.prototype.updateEntityPosition = function(
     this._entities[key] = entity;
 };
 
-Game.Map.prototype.getItemsAt = function(x, y, z) {
+Game.Map.prototype.getItemsAt = function (x, y, z) {
     return this._items[x + ',' + y + ',' + z];
 };
-Game.Map.prototype.getItemsWithinRadius = function(centerX, centerY,
-                                                      centerZ, radius) {
+Game.Map.prototype.getItemsWithinRadius = function (centerX, centerY,
+    centerZ, radius) {
     results = [];
     // Determine our bounds
     var leftX = centerX - radius;
@@ -226,7 +259,7 @@ Game.Map.prototype.getItemsWithinRadius = function(centerX, centerY,
     // Iterate through our entities, adding any which are within the bounds
     for (var key in this._items) {
         var item = this._items[key];
-        if (item.getX() >= leftX && item.getX() <= rightX && 
+        if (item.getX() >= leftX && item.getX() <= rightX &&
             item.getY() >= topY && item.getY() <= bottomY &&
             item.getZ() == centerZ) {
             results.push(item);
@@ -235,7 +268,7 @@ Game.Map.prototype.getItemsWithinRadius = function(centerX, centerY,
     return results;
 };
 
-Game.Map.prototype.setItemsAt = function(x, y, z, items) {
+Game.Map.prototype.setItemsAt = function (x, y, z, items) {
     // If our items array is empty, then delete the key from the table.
     var key = x + ',' + y + ',' + z;
     if (items.length === 0) {
@@ -248,7 +281,11 @@ Game.Map.prototype.setItemsAt = function(x, y, z, items) {
     }
 };
 
-Game.Map.prototype.addItem = function(x, y, z, item) {
+Game.Map.prototype.addItem = function (x, y, z, item) {
+    // Update item's internal store
+    item.setPosition({ x: x, y: y, z: z });
+    item.setMap(this);
+    
     // If we already have items at that position, simply append the item to the 
     // list of items.
     var key = x + ',' + y + ',' + z;
@@ -259,11 +296,11 @@ Game.Map.prototype.addItem = function(x, y, z, item) {
     }
 };
 
-Game.Map.prototype.addItemAtRandomPosition = function(item, z) {
+Game.Map.prototype.addItemAtRandomPosition = function (item, z) {
     var position = this.getRandomFloorPosition(z);
     this.addItem(position.x, position.y, position.z, item);
 };
 
-Game.Map.prototype.getPlayer = function() {
+Game.Map.prototype.getPlayer = function () {
     return this._player;
 };

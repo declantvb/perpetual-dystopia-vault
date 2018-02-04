@@ -1,4 +1,4 @@
-Game.Map.Cave = function(tiles, player) {
+Game.Map.Cave = function (tiles, player) {
     // Call the Map constructor
     Game.Map.call(this, tiles);
     // Add the player
@@ -25,7 +25,7 @@ Game.Map.Cave = function(tiles, player) {
         }
     }
     // Add weapons and armor to the map in random positions and floors
-    var templates = ['dagger', 'sword', 'staff', 
+    var templates = ['dagger', 'sword', 'staff',
         'tunic', 'chainmail', 'platemail'];
     for (var i = 0; i < templates.length; i++) {
         this.addItemAtRandomPosition(Game.ItemRepository.create(templates[i]),
@@ -33,7 +33,7 @@ Game.Map.Cave = function(tiles, player) {
     }
     // Add a hole to the final cavern on the last level.
     var holePosition = this.getRandomFloorPosition(this._depth - 1);
-    this._tiles[this._depth - 1][holePosition.x][holePosition.y] = 
+    this._tiles[this._depth - 1][holePosition.x][holePosition.y] =
         Game.Tile.holeToCavernTile;
 };
 Game.Map.Cave.extend(Game.Map);
