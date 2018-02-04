@@ -13,6 +13,10 @@ Game.EntityMixins = {};
 Game.EntityMixins.PlayerActor = {
     name: 'PlayerActor',
     groupName: 'Actor',
+    init: function () {
+        this._visibleCells = [];
+        this._busy = false;
+    },
     act: function () {
         if (this._acting) {
             return;
@@ -25,15 +29,44 @@ Game.EntityMixins.PlayerActor = {
             // Send a last message to the player
             Game.sendMessage(this, 'Press [Enter] to continue!');
         }
+
+        var visibleCells = [];
+        var map = this.getMap();
+        var currentDepth = this.getZ()
+        // Find all visible cells and update the object
+        map.getFov(currentDepth).compute(
+            this.getX(), this.getY(),
+            this.getSightRadius(),
+            function (x, y, radius, visibility) {
+                visibleCells[x + "," + y] = true;
+                // Mark cell as explored
+                map.setExplored(x, y, currentDepth, true);
+            });
+        this._visibleCells = visibleCells;
+
         // Re-render the screen
         Game.refresh();
         // Lock the engine and wait asynchronously
         // for the player to press a key.
         this.getMap().getEngine().lock();
-        // Clear the message queue
-        this.clearMessages();
+
+        if (!this.getBusy()) {
+            // Clear the message queue
+            this.clearMessages();
+            this.clearAlerts();
+        }
+
         this._acting = false;
-    }
+    },
+    getVisibleCells: function () {
+        return this._visibleCells;
+    },
+    getBusy: function () {
+        return this._busy;
+    },
+    setBusy: function (value) {
+        this._busy = value;
+    },
 };
 
 Game.EntityMixins.FungusActor = {
@@ -302,6 +335,24 @@ Game.EntityMixins.MessageRecipient = {
     }
 };
 
+Game.EntityMixins.Alertable = {
+    name: 'Alertable',
+    init: function () {
+        this._alerts = [];
+    },
+    getAlerts: function () {
+        return this._alerts;
+    },
+    clearAlerts: function () {
+        this._alerts = [];
+    },
+    listeners: {
+        alert: function (text) {
+            this._alerts.push(text);
+        }
+    }
+}
+
 // This signifies our entity posseses a field of vision of a given radius.
 Game.EntityMixins.Sight = {
     name: 'Sight',
@@ -496,6 +547,12 @@ Game.EntityMixins.FoodConsumer = {
         update: function () {
             // Remove the standard depletion points
             this.modifyFullnessBy(-this._fullnessDepletionRate);
+
+            // Fullness points per percent of max fullness
+            var perPercent = this._maxFullness / 100;
+            if (this._fullness <= perPercent * 5) {
+                this.raiseEvent('alert', 'you are starving');
+            }
         }
     }
 };
@@ -520,7 +577,7 @@ Game.EntityMixins.CorpseDropper = {
                         x: this._x,
                         y: this._y,
                         z: this._z,
-                        map: this._map                        
+                        map: this._map
                     }));
             }
         }

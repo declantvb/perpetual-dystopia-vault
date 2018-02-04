@@ -61,6 +61,7 @@ Game.Screen.playScreen = {
                 '%c{white}%b{black}' + messages[i]
             );
         }
+
         // Render player stats
         var stats = '%c{white}%b{black}';
         stats += vsprintf('HP: %d/%d L: %d XP: %d',
@@ -93,19 +94,10 @@ Game.Screen.playScreen = {
         var topLeftX = offsets.x;
         var topLeftY = offsets.y;
         // This object will keep track of all visible map cells
-        var visibleCells = {};
+        var visibleCells = this._player.getVisibleCells();
         // Store this._player.getMap() and player's z to prevent losing it in callbacks
         var map = this._player.getMap();
         var currentDepth = this._player.getZ();
-        // Find all visible cells and update the object
-        map.getFov(currentDepth).compute(
-            this._player.getX(), this._player.getY(),
-            this._player.getSightRadius(),
-            function (x, y, radius, visibility) {
-                visibleCells[x + "," + y] = true;
-                // Mark cell as explored
-                map.setExplored(x, y, currentDepth, true);
-            });
         // Render the explored map cells
         for (var x = topLeftX; x < topLeftX + screenWidth; x++) {
             for (var y = topLeftY; y < topLeftY + screenHeight; y++) {
@@ -800,22 +792,51 @@ Game.Screen.waitScreen = {
         this._waiting = false;
         this._turnsToWait = 0;
         this._inputString = '';
+        this._exiting = false;
     },
     render: function (display) {
         var playScreen = Game.Screen.playScreen;
         playScreen.renderTiles.call(playScreen, display);
 
         if (this._waiting) {
-            display.drawText(0, Game.getScreenHeight() - 1, 'Resting for ' + this._turnsToWait + ' turns...');
-    
-            if (this._turnsToWait <= 0) {
-                Game.Screen.playScreen.setSubScreen(null);
+            //Check for hostiles in sight radius
+            var visibleCells = playScreen._player.getVisibleCells();
+            var seenEnemy = undefined;
+            var currentDepth = playScreen._player.getZ();
+            var map = playScreen._player.getMap();
+            for (const key in visibleCells) {
+                if (!visibleCells[key]) continue;
+                var x = key.split(',')[0];
+                var y = key.split(',')[1];
+
+                var entity = map.getEntityAt(x, y, currentDepth);
+                if (entity && entity != playScreen._player && entity.hasMixin(Game.EntityMixins.Attacker)) {
+                    seenEnemy = entity;
+                }
             }
-    
+
+            var alerts = playScreen._player.getAlerts();
+
+            display.drawText(0, Game.getScreenHeight() - 1, 'Resting for ' + this._turnsToWait + ' turns...');
+
+            // Escape from screen
+            if (this._turnsToWait <= 0 || seenEnemy || alerts.length > 0) {
+                if (seenEnemy) {
+                    Game.sendMessage(playScreen._player, 'Rest interrupted by a %s!', [seenEnemy.getName()]);
+                }
+                if (alerts.length > 0) {
+                    Game.sendMessage(playScreen._player, 'Rest interrupted because %s!', [alerts.join(', ')]);
+                }
+                Game.Screen.playScreen.setSubScreen(null);
+                this._exiting = true;
+            }
+
+            // delay unlocking to slow down the speed
             setTimeout(() => {
                 this._turnsToWait--;
                 
                 playScreen._player.getMap().getEngine().unlock();
+                if (this._exiting) playScreen._player.setBusy(false);
             }, 100);
         } else {
             display.drawText(0, Game.getScreenHeight() - 1, 'Turns to rest: ' + this._inputString);
@@ -834,8 +855,11 @@ Game.Screen.waitScreen = {
                     //bad number
                 } else {
                     this._turnsToWait = num;
+                    Game.Screen.playScreen._player.setBusy(true);
                     this._waiting = true;
                 }
+            } else if (inputData.keyCode === ROT.VK_BACK_SPACE) {
+                this._inputString = this._inputString.slice(0, -1)
             }
         } else if (inputType == 'keypress') {
             var keyChar = String.fromCharCode(inputData.charCode);
