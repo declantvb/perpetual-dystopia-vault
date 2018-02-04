@@ -793,6 +793,7 @@ Game.Screen.waitScreen = {
         this._turnsToWait = 0;
         this._inputString = '';
         this._exiting = false;
+        this._cancel = false;
     },
     render: function (display) {
         var playScreen = Game.Screen.playScreen;
@@ -820,12 +821,15 @@ Game.Screen.waitScreen = {
             display.drawText(0, Game.getScreenHeight() - 1, 'Resting for ' + this._turnsToWait + ' turns...');
 
             // Escape from screen
-            if (this._turnsToWait <= 0 || seenEnemy || alerts.length > 0) {
+            if (this._turnsToWait <= 0 || seenEnemy || alerts.length > 0 || this._cancel) {
                 if (seenEnemy) {
                     Game.sendMessage(playScreen._player, 'Rest interrupted by a %s!', [seenEnemy.getName()]);
                 }
                 if (alerts.length > 0) {
                     Game.sendMessage(playScreen._player, 'Rest interrupted because %s!', [alerts.join(', ')]);
+                }
+                if (this._cancel) {
+                    Game.sendMessage(playScreen._player, 'Rest canceled');                    
                 }
                 Game.Screen.playScreen.setSubScreen(null);
                 this._exiting = true;
@@ -844,6 +848,10 @@ Game.Screen.waitScreen = {
     },
     handleInput: function (inputType, inputData) {
         if (this._waiting) {
+            //cancel
+            if (inputType == 'keydown') {
+                this._cancel = true;
+            }
             return;
         }
 
