@@ -27,7 +27,7 @@ Game.Map = function (tiles) {
             }
         },
         getSpeed: function () {
-            return 1000;   
+            return 1000;
         },
     }, true);
     // Setup the explored array
@@ -209,7 +209,7 @@ Game.Map.prototype.removeItem = function (item) {
     for (let i = 0; i < mapItems.length; i++) {
         const mapItem = mapItems[i];
         if (mapItem == item) {
-            mapItems.splice(i,1);
+            mapItems.splice(i, 1);
         }
     }
     if (mapItems.length === 0) {
@@ -246,7 +246,11 @@ Game.Map.prototype.updateEntityPosition = function (
 };
 
 Game.Map.prototype.getItemsAt = function (x, y, z) {
-    return this._items[x + ',' + y + ',' + z];
+    if (typeof x == 'object') {
+        return this._items[x.x + ',' + x.y + ',' + x.z]
+    } else {
+        return this._items[x + ',' + y + ',' + z];
+    }
 };
 Game.Map.prototype.getItemsWithinRadius = function (centerX, centerY,
     centerZ, radius) {
@@ -285,7 +289,7 @@ Game.Map.prototype.addItem = function (x, y, z, item) {
     // Update item's internal store
     item.setPosition({ x: x, y: y, z: z });
     item.setMap(this);
-    
+
     // If we already have items at that position, simply append the item to the 
     // list of items.
     var key = x + ',' + y + ',' + z;

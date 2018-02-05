@@ -78,6 +78,11 @@ Game.ItemMixins.Butcherable = {
     getPotentialTemplates: function () {
         return this._potentialTemplates;
     },
+    getItems: function () {
+        return this._potentialTemplates.map(element => {
+            return Game.ItemRepository.create(element, { origin: this._name });
+        });
+    },
     listeners: {
         details: function () {
             var results = [];

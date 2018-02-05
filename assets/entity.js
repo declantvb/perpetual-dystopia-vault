@@ -51,6 +51,13 @@ Game.Entity.prototype.getY   = function() {
 Game.Entity.prototype.getZ = function() {
     return this._z;
 };
+Game.Entity.prototype.getPosition = function() {
+    return {
+        x: this._x,
+        y: this._y,
+        z: this._z,        
+    };
+};
 Game.Entity.prototype.getMap = function() {
     return this._map;
 };

@@ -475,6 +475,16 @@ Game.EntityMixins.InventoryHolder = {
         }
         return false;
     },
+    canAddItems: function (num) {
+        // Check if we have an empty slot.
+        var free = 0;
+        for (var i = 0; i < this._items.length; i++) {
+            if (!this._items[i]) {
+                free++;
+            }
+        }
+        return free >= num;
+    },
     pickupItems: function (indices) {
         // Allows the user to pick up items from the map, where indices is
         // the indices for the array returned by map.getItemsAt

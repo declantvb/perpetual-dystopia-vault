@@ -227,23 +227,23 @@ Game.Screen.playScreen = {
                 }
             } else if (inputData.keyCode === ROT.VK_B) {
                 // Setup the butcher screen
-                var items = this._player.getMap().getItemsAt(this._player.getX(),
-                    this._player.getY(), this._player.getZ());
+                var items = this._player.getMap().getItemsAt(this._player.getPosition());
 
                 if (items) {
-
+                    var target = undefined;
+                    for (let i = 0; i < items.length; i++) {
+                        const item = items[i];
+                        if (item.hasMixin(Game.ItemMixins.Butcherable)) {
+                            target = item;
+                            break;
+                        }
+                    }
+                    if (target) {
+                        Game.Screen.butcherScreen.setup(this._player, target.getItems());
+                        this.setSubScreen(Game.Screen.butcherScreen);
+                    }
                     return;
                 }
-
-                items = this._player.getMap().getItemsWithinRadius(this._player.getX(),
-                    this._player.getY(), this._player.getZ(), 1);
-
-                if (items) {
-
-                    return;
-                }
-
-                var inventory = this._player.getItems();
 
             } else if (inputData.keyCode === ROT.VK_R) {
                 // Rest
@@ -350,8 +350,9 @@ Game.Screen.ItemListScreen = function (template) {
     this._hasNoItemOption = template['hasNoItemOption'];
 };
 
-Game.Screen.ItemListScreen.prototype.setup = function (player, items) {
+Game.Screen.ItemListScreen.prototype.setup = function (player, items, newCaption) {
     this._player = player;
+    this._caption = newCaption || this._caption;
     // Should be called before switching to the screen.
     var count = 0;
     // Iterate over each item, keeping only the aceptable ones and counting
@@ -815,7 +816,7 @@ Game.Screen.restScreen = {
                     //bad number
                 } else {
                     Game.Screen.playScreen._player.setBusy(true);
-                    Game.Screen.waitScreen.setup({turnsToWait: num, action: 'Resting'});
+                    Game.Screen.waitScreen.setup({ turnsToWait: num, action: 'Resting' });
                     Game.Screen.playScreen.setSubScreen(Game.Screen.waitScreen);
                 }
             } else if (inputData.keyCode === ROT.VK_BACK_SPACE) {
@@ -829,12 +830,45 @@ Game.Screen.restScreen = {
         }
         Game.refresh();
     }
-}
+};
+
+Game.Screen.butcherScreen = new Game.Screen.ItemListScreen({
+    caption: 'What do you want to butcher?',
+    canSelect: true,
+    canSelectMultipleItems: true,
+    ok: function (selectedItems) {
+        var keys = Object.keys(selectedItems);
+        if (!this._player.canAddItems(keys.length)) {
+            Game.sendMessage(this._player, "Your inventory cannot hold that many items!");
+        }
+        var player = this._player;
+        //todo variable time for butchering
+        Game.Screen.waitScreen.setup({
+            turnsToWait: keys.length,
+            action: 'Butchering',
+            onComplete: function () {
+                for (let i = 0; i < keys.length; i++) {
+                    const item = selectedItems[keys[i]];
+                    if (!player.addItem(item)) {
+                        Game.sendMessage(player, "Your inventory is full! Some items have been dropped");
+                    } else {
+                        Game.sendMessage(player, "You pick up %s.", [item.describeA()]);
+                    }
+                }
+                //todo remove items from butcherable
+            }
+        });
+        Game.Screen.playScreen.setSubScreen(Game.Screen.waitScreen);
+        //todo: done func on wait screen
+        return true;
+    }
+});
 
 Game.Screen.waitScreen = {
     setup: function (template) {
         this._turnsToWait = template['turnsToWait'] || 0;
         this._action = template['action'] || 'Waiting';
+        this._onComplete = template['onComplete'] || function () { };
         this._exiting = false;
         this._cancel = false;
     },
@@ -850,7 +884,7 @@ Game.Screen.waitScreen = {
         display.drawText(0, Game.getScreenHeight() - 1, vsprintf('%s for %s turns...', [this._action, this._turnsToWait]));
 
         // Escape from screen
-        if (this._turnsToWait <= 0 || seenEnemies.length > 0 || alerts.length > 0 || this._cancel) {
+        if (seenEnemies.length > 0 || alerts.length > 0 || this._cancel) {
             if (seenEnemies.length > 0) {
                 Game.sendMessage(playScreen._player, '%s interrupted by %s!', [this._action, seenEnemies[0].describeA()]);
             }
@@ -860,6 +894,11 @@ Game.Screen.waitScreen = {
             if (this._cancel) {
                 Game.sendMessage(playScreen._player, '%s canceled', [this._action]);
             }
+            Game.Screen.playScreen.setSubScreen(null);
+            this._exiting = true;
+        }
+        else if (this._turnsToWait <= 0) {
+            this._onComplete();
             Game.Screen.playScreen.setSubScreen(null);
             this._exiting = true;
         }
