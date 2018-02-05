@@ -94,10 +94,19 @@ Game.Screen.playScreen = {
         var topLeftX = offsets.x;
         var topLeftY = offsets.y;
         // This object will keep track of all visible map cells
-        var visibleCells = this._player.getVisibleCells();
+        var visibleCells = {};
         // Store this._player.getMap() and player's z to prevent losing it in callbacks
         var map = this._player.getMap();
         var currentDepth = this._player.getZ();
+        // Find all visible cells and update the object		
+        map.getFov(currentDepth).compute(
+            this._player.getX(), this._player.getY(),
+            this._player.getSightRadius(),
+            function (x, y, radius, visibility) {
+                visibleCells[x + "," + y] = true;
+                // Mark cell as explored		
+                map.setExplored(x, y, currentDepth, true);
+            });
         // Render the explored map cells
         for (var x = topLeftX; x < topLeftX + screenWidth; x++) {
             for (var y = topLeftY; y < topLeftY + screenHeight; y++) {
@@ -757,6 +766,7 @@ Game.Screen.lookScreen = new Game.Screen.TargetBasedScreen({
             if (this._visibleCells[x + ',' + y]) {
                 var items = map.getItemsAt(x, y, z);
                 // If we have items, we want to render the top most item
+                // TODO option to see more
                 if (items) {
                     var item = items[items.length - 1];
                     return String.format('%s - %s (%s)',
@@ -801,35 +811,22 @@ Game.Screen.waitScreen = {
 
         if (this._waiting) {
             //Check for hostiles in sight radius
-            var visibleCells = playScreen._player.getVisibleCells();
-            var seenEnemy = undefined;
-            var currentDepth = playScreen._player.getZ();
-            var map = playScreen._player.getMap();
-            for (const key in visibleCells) {
-                if (!visibleCells[key]) continue;
-                var x = key.split(',')[0];
-                var y = key.split(',')[1];
-
-                var entity = map.getEntityAt(x, y, currentDepth);
-                if (entity && entity != playScreen._player && entity.hasMixin(Game.EntityMixins.Attacker)) {
-                    seenEnemy = entity;
-                }
-            }
+            var seenEnemies = playScreen._player.seenEntitiesWith(Game.EntityMixins.Attacker);
 
             var alerts = playScreen._player.getAlerts();
 
             display.drawText(0, Game.getScreenHeight() - 1, 'Resting for ' + this._turnsToWait + ' turns...');
 
             // Escape from screen
-            if (this._turnsToWait <= 0 || seenEnemy || alerts.length > 0 || this._cancel) {
-                if (seenEnemy) {
-                    Game.sendMessage(playScreen._player, 'Rest interrupted by a %s!', [seenEnemy.getName()]);
+            if (this._turnsToWait <= 0 || seenEnemies || alerts.length > 0 || this._cancel) {
+                if (seenEnemies) {
+                    Game.sendMessage(playScreen._player, 'Rest interrupted by %s!', [seenEnemies[0].describeA()]);
                 }
                 if (alerts.length > 0) {
                     Game.sendMessage(playScreen._player, 'Rest interrupted because %s!', [alerts.join(', ')]);
                 }
                 if (this._cancel) {
-                    Game.sendMessage(playScreen._player, 'Rest canceled');                    
+                    Game.sendMessage(playScreen._player, 'Rest canceled');
                 }
                 Game.Screen.playScreen.setSubScreen(null);
                 this._exiting = true;
@@ -838,7 +835,7 @@ Game.Screen.waitScreen = {
             // delay unlocking to slow down the speed
             setTimeout(() => {
                 this._turnsToWait--;
-                
+
                 playScreen._player.getMap().getEngine().unlock();
                 if (this._exiting) playScreen._player.setBusy(false);
             }, 100);

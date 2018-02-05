@@ -30,20 +30,6 @@ Game.EntityMixins.PlayerActor = {
             Game.sendMessage(this, 'Press [Enter] to continue!');
         }
 
-        var visibleCells = [];
-        var map = this.getMap();
-        var currentDepth = this.getZ()
-        // Find all visible cells and update the object
-        map.getFov(currentDepth).compute(
-            this.getX(), this.getY(),
-            this.getSightRadius(),
-            function (x, y, radius, visibility) {
-                visibleCells[x + "," + y] = true;
-                // Mark cell as explored
-                map.setExplored(x, y, currentDepth, true);
-            });
-        this._visibleCells = visibleCells;
-
         // Re-render the screen
         Game.refresh();
         // Lock the engine and wait asynchronously
@@ -57,9 +43,6 @@ Game.EntityMixins.PlayerActor = {
         }
 
         this._acting = false;
-    },
-    getVisibleCells: function () {
-        return this._visibleCells;
     },
     getBusy: function () {
         return this._busy;
@@ -359,9 +342,17 @@ Game.EntityMixins.Sight = {
     groupName: 'Sight',
     init: function (template) {
         this._sightRadius = template['sightRadius'] || 5;
+        this._seenEntities = [];
+        this._seenItems = [];
     },
     getSightRadius: function () {
         return this._sightRadius;
+    },
+    getSeenEntities: function () {
+        return this._seenEntities;
+    },
+    getSeenItems: function () {
+        return this._seenItems;
     },
     increaseSightRadius: function (value) {
         // If no value was passed, default to 1.
@@ -371,33 +362,45 @@ Game.EntityMixins.Sight = {
         Game.sendMessage(this, "You are more aware of your surroundings!");
     },
     canSee: function (entity) {
-        // If not on the same map or on different floors, then exit early
-        if (!entity || this._map !== entity.getMap() || this._z !== entity.getZ()) {
-            return false;
+        return this._seenEntities.indexOf(entity) >= 0;
+    },
+    seenEntitiesWith: function (mixin) {
+        var seen = [];
+        this._seenEntities.forEach(entity => {
+            if (entity.hasMixin(mixin)) {
+                seen.push(entity);
+            }
+        });
+        return seen;
+    },
+    listeners: {
+        update: function () {
+            var seenEntities = [];
+            var seenItems = [];
+
+            var map = this.getMap();
+            var currentDepth = this.getZ();
+            var me = this;
+
+            map.getFov(currentDepth).compute(
+                this.getX(), this.getY(),
+                this.getSightRadius(),
+                function (x, y, radius, visibility) {
+                    var entity = map.getEntityAt(x, y, currentDepth);
+                    if (entity && entity != me) {
+                        seenEntities.push(entity);
+                    }
+
+                    var items = map.getItemsAt(x, y, currentDepth);
+                    // If we have items, we want to render the top most item
+                    if (items) {
+                        Array.prototype.push.apply(seenItems, items);
+                    }                    
+                });
+
+            this._seenEntities = seenEntities;
+            this._seenItems = seenItems;
         }
-
-        var otherX = entity.getX();
-        var otherY = entity.getY();
-
-        // If we're not in a square field of view, then we won't be in a real
-        // field of view either.
-        if ((otherX - this._x) * (otherX - this._x) +
-            (otherY - this._y) * (otherY - this._y) >
-            this._sightRadius * this._sightRadius) {
-            return false;
-        }
-
-        // Compute the FOV and check if the coordinates are in there.
-        var found = false;
-        this.getMap().getFov(this.getZ()).compute(
-            this.getX(), this.getY(),
-            this.getSightRadius(),
-            function (x, y, radius, visibility) {
-                if (x === otherX && y === otherY) {
-                    found = true;
-                }
-            });
-        return found;
     }
 };
 
