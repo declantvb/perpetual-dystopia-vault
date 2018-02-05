@@ -247,8 +247,8 @@ Game.Screen.playScreen = {
 
             } else if (inputData.keyCode === ROT.VK_R) {
                 // Rest
-                Game.Screen.waitScreen.setup(20);
-                this.setSubScreen(Game.Screen.waitScreen);
+                Game.Screen.restScreen.setup();
+                this.setSubScreen(Game.Screen.restScreen);
                 return;
             } else {
                 // Not a valid key
@@ -797,61 +797,16 @@ Game.Screen.lookScreen = new Game.Screen.TargetBasedScreen({
     }
 });
 
-Game.Screen.waitScreen = {
+Game.Screen.restScreen = {
     setup: function () {
-        this._waiting = false;
-        this._turnsToWait = 0;
         this._inputString = '';
-        this._exiting = false;
-        this._cancel = false;
     },
     render: function (display) {
         var playScreen = Game.Screen.playScreen;
         playScreen.renderTiles.call(playScreen, display);
-
-        if (this._waiting) {
-            //Check for hostiles in sight radius
-            var seenEnemies = playScreen._player.seenEntitiesWith(Game.EntityMixins.Attacker);
-
-            var alerts = playScreen._player.getAlerts();
-
-            display.drawText(0, Game.getScreenHeight() - 1, 'Resting for ' + this._turnsToWait + ' turns...');
-
-            // Escape from screen
-            if (this._turnsToWait <= 0 || seenEnemies || alerts.length > 0 || this._cancel) {
-                if (seenEnemies) {
-                    Game.sendMessage(playScreen._player, 'Rest interrupted by %s!', [seenEnemies[0].describeA()]);
-                }
-                if (alerts.length > 0) {
-                    Game.sendMessage(playScreen._player, 'Rest interrupted because %s!', [alerts.join(', ')]);
-                }
-                if (this._cancel) {
-                    Game.sendMessage(playScreen._player, 'Rest canceled');
-                }
-                Game.Screen.playScreen.setSubScreen(null);
-                this._exiting = true;
-            }
-
-            // delay unlocking to slow down the speed
-            setTimeout(() => {
-                this._turnsToWait--;
-
-                playScreen._player.getMap().getEngine().unlock();
-                if (this._exiting) playScreen._player.setBusy(false);
-            }, 100);
-        } else {
-            display.drawText(0, Game.getScreenHeight() - 1, 'Turns to rest: ' + this._inputString);
-        }
+        display.drawText(0, Game.getScreenHeight() - 1, 'Turns to rest: ' + this._inputString);
     },
     handleInput: function (inputType, inputData) {
-        if (this._waiting) {
-            //cancel
-            if (inputType == 'keydown') {
-                this._cancel = true;
-            }
-            return;
-        }
-
         // input wait time
         if (inputType == 'keydown') {
             if (inputData.keyCode === ROT.VK_RETURN) {
@@ -859,9 +814,9 @@ Game.Screen.waitScreen = {
                 if (isNaN(num)) {
                     //bad number
                 } else {
-                    this._turnsToWait = num;
                     Game.Screen.playScreen._player.setBusy(true);
-                    this._waiting = true;
+                    Game.Screen.waitScreen.setup({turnsToWait: num, action: 'Resting'});
+                    Game.Screen.playScreen.setSubScreen(Game.Screen.waitScreen);
                 }
             } else if (inputData.keyCode === ROT.VK_BACK_SPACE) {
                 this._inputString = this._inputString.slice(0, -1)
@@ -873,6 +828,56 @@ Game.Screen.waitScreen = {
             }
         }
         Game.refresh();
+    }
+}
+
+Game.Screen.waitScreen = {
+    setup: function (template) {
+        this._turnsToWait = template['turnsToWait'] || 0;
+        this._action = template['action'] || 'Waiting';
+        this._exiting = false;
+        this._cancel = false;
+    },
+    render: function (display) {
+        var playScreen = Game.Screen.playScreen;
+        playScreen.renderTiles.call(playScreen, display);
+
+        //Check for hostiles in sight radius
+        var seenEnemies = playScreen._player.seenEntitiesWith(Game.EntityMixins.Attacker);
+
+        var alerts = playScreen._player.getAlerts();
+
+        display.drawText(0, Game.getScreenHeight() - 1, vsprintf('%s for %s turns...', [this._action, this._turnsToWait]));
+
+        // Escape from screen
+        if (this._turnsToWait <= 0 || seenEnemies.length > 0 || alerts.length > 0 || this._cancel) {
+            if (seenEnemies.length > 0) {
+                Game.sendMessage(playScreen._player, '%s interrupted by %s!', [this._action, seenEnemies[0].describeA()]);
+            }
+            if (alerts.length > 0) {
+                Game.sendMessage(playScreen._player, '%s interrupted because %s!', [this._action, alerts.join(', ')]);
+            }
+            if (this._cancel) {
+                Game.sendMessage(playScreen._player, '%s canceled', [this._action]);
+            }
+            Game.Screen.playScreen.setSubScreen(null);
+            this._exiting = true;
+        }
+
+        // delay unlocking to slow down the speed
+        setTimeout(() => {
+            this._turnsToWait--;
+
+            playScreen._player.getMap().getEngine().unlock();
+            if (this._exiting) playScreen._player.setBusy(false);
+        }, 100);
+    },
+    handleInput: function (inputType, inputData) {
+        //cancel
+        if (inputType == 'keydown') {
+            this._cancel = true;
+        }
+        return;
     }
 };
 
