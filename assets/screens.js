@@ -239,8 +239,16 @@ Game.Screen.playScreen = {
                         }
                     }
                     if (target) {
-                        Game.Screen.butcherScreen.setup(this._player, target.getItems());
-                        this.setSubScreen(Game.Screen.butcherScreen);
+                        var count = Game.Screen.butcherScreen.setup(this._player, target.getItems(), {
+                            butcherable: target
+                        });
+                        if (count > 0) {
+                            this.setSubScreen(Game.Screen.butcherScreen);
+                        } else {
+                            Game.sendMessage(this._player, "%s has been stripped bare, there is nothing left to take!", [target.describeThe(true)]);
+                            Game.refresh();
+                            return;
+                        }
                     }
                     return;
                 }
@@ -350,9 +358,8 @@ Game.Screen.ItemListScreen = function (template) {
     this._hasNoItemOption = template['hasNoItemOption'];
 };
 
-Game.Screen.ItemListScreen.prototype.setup = function (player, items, newCaption) {
+Game.Screen.ItemListScreen.prototype.setup = function (player, items, extra) {
     this._player = player;
-    this._caption = newCaption || this._caption;
     // Should be called before switching to the screen.
     var count = 0;
     // Iterate over each item, keeping only the aceptable ones and counting
@@ -369,6 +376,13 @@ Game.Screen.ItemListScreen.prototype.setup = function (player, items, newCaption
     });
     // Clean set of selected indices
     this._selectedIndices = {};
+
+    //Copy over extra properties
+    for (var key in extra) {
+        if (!this.hasOwnProperty(key)) {
+            this[key] = extra[key];
+        }
+    }
     return count;
 };
 
@@ -842,6 +856,7 @@ Game.Screen.butcherScreen = new Game.Screen.ItemListScreen({
             Game.sendMessage(this._player, "Your inventory cannot hold that many items!");
         }
         var player = this._player;
+        var butcherable = this.butcherable;
         //todo variable time for butchering
         Game.Screen.waitScreen.setup({
             turnsToWait: keys.length * 5,
@@ -849,17 +864,18 @@ Game.Screen.butcherScreen = new Game.Screen.ItemListScreen({
             onComplete: function () {
                 for (let i = 0; i < keys.length; i++) {
                     const item = selectedItems[keys[i]];
-                    if (!player.addItem(item)) {
-                        Game.sendMessage(player, "Your inventory is full! Some items have been dropped");
-                    } else {
+                    if (player.addItem(item)) {
                         Game.sendMessage(player, "You pick up %s.", [item.describeA()]);
+                        if (!butcherable.removeItem(item)) {
+                            console.log('failed to remove item after butchering');
+                        }
+                    } else {
+                        Game.sendMessage(player, "Your inventory is full! Some items have been dropped");
                     }
                 }
-                //todo remove items from butcherable
             }
         });
         Game.Screen.playScreen.setSubScreen(Game.Screen.waitScreen);
-        //todo: done func on wait screen
         return true;
     }
 });

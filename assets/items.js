@@ -29,12 +29,19 @@ Game.ItemRepository.define('pumpkin', {
     mixins: [Game.ItemMixins.Edible, Game.ItemMixins.Equippable]
 });
 
+Game.ItemRepository.define('meat', {
+    name: 'chunk of meat',
+    character: '%',
+    foreground: 'pink',
+    foodValue: 40,
+    consumptions: 2,
+    mixins: [Game.ItemMixins.Edible]
+});
+
 Game.ItemRepository.define('corpse', {
     name: 'corpse',
     character: '%',
-    foodValue: 75,
-    consumptions: 1,
-    mixins: [Game.ItemMixins.Edible, Game.ItemMixins.Butcherable, Game.ItemMixins.Decays]
+    mixins: [Game.ItemMixins.Butcherable, Game.ItemMixins.Decays]
 }, {
     disableRandomCreation: true
 });

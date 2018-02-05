@@ -30,7 +30,7 @@ Game.ItemMixins.Edible = {
     },
     listeners: {
         details: function () {
-            return [{ key: 'food', value: this._foodValue }];
+            return [{ key: 'food', value: this._foodValue + 'x' + this._remainingConsumptions }];
         }
     }
 };
@@ -74,14 +74,23 @@ Game.ItemMixins.Butcherable = {
     name: 'Butcherable',
     init: function (template) {
         this._potentialTemplates = template['potentialTemplates'] || [];
+        this._items = this._potentialTemplates.map(element => {
+            return Game.ItemRepository.create(element, { origin: this.getName() });
+        });
     },
     getPotentialTemplates: function () {
         return this._potentialTemplates;
     },
     getItems: function () {
-        return this._potentialTemplates.map(element => {
-            return Game.ItemRepository.create(element, { origin: this._name });
-        });
+        return this._items;
+    },
+    removeItem: function (item) {
+        var index = this._items.indexOf(item);
+        if (index >= 0) {
+            this._items.splice(index, 1);
+            return true;
+        }
+        return false;
     },
     listeners: {
         details: function () {
