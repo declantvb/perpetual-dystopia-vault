@@ -6,8 +6,11 @@ Game.Screen.startScreen = {
     exit: function () { console.log("Exited start screen."); },
     render: function (display) {
         // Render our prompt to the screen
-        display.drawText(1, 1, "%c{yellow}Javascript Roguelike");
-        display.drawText(1, 2, "Press [Enter] to start!");
+        var title = 'Perpetual Dystopia Vault';
+        var prompt = 'Press [Enter] to start!';
+        var y = 5;
+        display.drawText(Game.getScreenWidth() / 2 - title.length / 2, y++, '%c{yellow}'+title);
+        display.drawText(Game.getScreenWidth() / 2 - prompt.length / 2, y++, prompt);
     },
     handleInput: function (inputType, inputData) {
         // When [Enter] is pressed, go to the play screen
@@ -940,24 +943,22 @@ Game.Screen.waitScreen = {
 // Define our help screen
 Game.Screen.helpScreen = {
     render: function (display) {
-        var text = 'jsrogue help';
+        var text = 'Help';
         var border = '-------------';
-        var y = 0;
+        var y = 1;
         display.drawText(Game.getScreenWidth() / 2 - text.length / 2, y++, text);
-        display.drawText(Game.getScreenWidth() / 2 - text.length / 2, y++, border);
-        display.drawText(0, y++, 'The villagers have been complaining of a terrible stench coming from the cave.');
-        display.drawText(0, y++, 'Find the source of this smell and get rid of it!');
-        y += 3;
-        display.drawText(0, y++, '[g] to get items');
-        display.drawText(0, y++, '[d] to drop items');
-        display.drawText(0, y++, '[e] to eat items');
-        display.drawText(0, y++, '[b] to butcher a corpse');
-        display.drawText(0, y++, '[w] to wield items');
-        display.drawText(0, y++, '[W] to wear items');
-        display.drawText(0, y++, '[x] to examine items');
-        display.drawText(0, y++, '[l] to look around you');
-        display.drawText(0, y++, '[r] to rest for a time');
-        display.drawText(0, y++, '[?] to show this help screen');
+        display.drawText(Game.getScreenWidth() / 2 - border.length / 2, y++, border);
+        y += 2;
+        display.drawText(3, y++, '[g] to get items');
+        display.drawText(3, y++, '[d] to drop items');
+        display.drawText(3, y++, '[e] to eat items');
+        display.drawText(3, y++, '[b] to butcher a corpse');
+        display.drawText(3, y++, '[w] to wield items');
+        display.drawText(3, y++, '[W] to wear items');
+        display.drawText(3, y++, '[x] to examine items');
+        display.drawText(3, y++, '[l] to look around you');
+        display.drawText(3, y++, '[r] to rest for a time');
+        display.drawText(3, y++, '[?] to show this help screen');
         y += 3;
         text = '--- press any key to continue ---';
         display.drawText(Game.getScreenWidth() / 2 - text.length / 2, y++, text);
