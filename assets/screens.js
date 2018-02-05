@@ -844,7 +844,7 @@ Game.Screen.butcherScreen = new Game.Screen.ItemListScreen({
         var player = this._player;
         //todo variable time for butchering
         Game.Screen.waitScreen.setup({
-            turnsToWait: keys.length,
+            turnsToWait: keys.length * 5,
             action: 'Butchering',
             onComplete: function () {
                 for (let i = 0; i < keys.length; i++) {
@@ -884,32 +884,33 @@ Game.Screen.waitScreen = {
         display.drawText(0, Game.getScreenHeight() - 1, vsprintf('%s for %s turns...', [this._action, this._turnsToWait]));
 
         // Escape from screen
-        if (seenEnemies.length > 0 || alerts.length > 0 || this._cancel) {
-            if (seenEnemies.length > 0) {
-                Game.sendMessage(playScreen._player, '%s interrupted by %s!', [this._action, seenEnemies[0].describeA()]);
-            }
-            if (alerts.length > 0) {
-                Game.sendMessage(playScreen._player, '%s interrupted because %s!', [this._action, alerts.join(', ')]);
-            }
-            if (this._cancel) {
-                Game.sendMessage(playScreen._player, '%s canceled', [this._action]);
-            }
-            Game.Screen.playScreen.setSubScreen(null);
+        if (seenEnemies.length > 0) {
             this._exiting = true;
+            Game.sendMessage(playScreen._player, '%s interrupted by %s!', [this._action, seenEnemies[0].describeA()]);
         }
-        else if (this._turnsToWait <= 0) {
+        if (alerts.length > 0) {
+            this._exiting = true;
+            Game.sendMessage(playScreen._player, '%s interrupted because %s!', [this._action, alerts.join(', ')]);
+        }
+        if (this._cancel) {
+            this._exiting = true;
+            Game.sendMessage(playScreen._player, '%s canceled', [this._action]);
+        }
+        if (this._turnsToWait <= 0) {
+            this._exiting = true;
             this._onComplete();
-            Game.Screen.playScreen.setSubScreen(null);
-            this._exiting = true;
         }
+        if (this._exiting) {
+            Game.Screen.playScreen.setSubScreen(null);
+        }
+        else {
+            // delay unlocking to slow down the speed
+            setTimeout(() => {
+                this._turnsToWait--;
 
-        // delay unlocking to slow down the speed
-        setTimeout(() => {
-            this._turnsToWait--;
-
-            playScreen._player.getMap().getEngine().unlock();
-            if (this._exiting) playScreen._player.setBusy(false);
-        }, 100);
+                if (!this._exiting) playScreen._player.getMap().getEngine().unlock();
+            }, 100);
+        }
     },
     handleInput: function (inputType, inputData) {
         //cancel
@@ -934,10 +935,12 @@ Game.Screen.helpScreen = {
         display.drawText(0, y++, '[g] to get items');
         display.drawText(0, y++, '[d] to drop items');
         display.drawText(0, y++, '[e] to eat items');
+        display.drawText(0, y++, '[b] to butcher a corpse');
         display.drawText(0, y++, '[w] to wield items');
         display.drawText(0, y++, '[W] to wear items');
         display.drawText(0, y++, '[x] to examine items');
         display.drawText(0, y++, '[l] to look around you');
+        display.drawText(0, y++, '[r] to rest for a time');
         display.drawText(0, y++, '[?] to show this help screen');
         y += 3;
         text = '--- press any key to continue ---';
