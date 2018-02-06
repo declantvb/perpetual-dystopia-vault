@@ -36,35 +36,37 @@ Game.ItemMixins.Edible = {
 };
 
 // Equipment mixins
-Game.ItemMixins.Equippable = {
-    name: 'Equippable',
+Game.ItemMixins.Wieldable = {
+    name: 'Wieldable',
+    groupName: 'Equippable',
     init: function (template) {
         this._attackValue = template['attackValue'] || 0;
-        this._defenseValue = template['defenseValue'] || 0;
-        this._wieldable = template['wieldable'] || false;
-        this._wearable = template['wearable'] || false;
     },
     getAttackValue: function () {
         return this._attackValue;
     },
+    listeners: {
+        details: function () {
+            var results = [];
+            results.push({ key: 'attack', value: this.getAttackValue() });
+            return results;
+        }
+    }
+};
+
+Game.ItemMixins.Wearable = {
+    name: 'Wearable',
+    groupName: 'Equippable',
+    init: function (template) {
+        this._defenseValue = template['defenseValue'] || 0;
+    },
     getDefenseValue: function () {
         return this._defenseValue;
-    },
-    isWieldable: function () {
-        return this._wieldable;
-    },
-    isWearable: function () {
-        return this._wearable;
     },
     listeners: {
         details: function () {
             var results = [];
-            if (this._wieldable) {
-                results.push({ key: 'attack', value: this.getAttackValue() });
-            }
-            if (this._wearable) {
-                results.push({ key: 'defense', value: this.getDefenseValue() });
-            }
+            results.push({ key: 'defense', value: this.getDefenseValue() });
             return results;
         }
     }

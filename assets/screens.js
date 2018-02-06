@@ -34,6 +34,8 @@ Game.Screen.playScreen = {
         var depth = 6;
         // Create our map from the tiles and player
         this._player = new Game.Entity(Game.PlayerTemplate);
+        //todo debug
+        this._player.addItem(Game.ItemRepository.create('sling'));
         var tiles = new Game.Builder(width, height, depth).getTiles();
         var map = new Game.Map.Cave(tiles, this._player);
         // Start the map's engine
@@ -532,7 +534,7 @@ Game.Screen.wieldScreen = new Game.Screen.ItemListScreen({
     canSelectMultipleItems: false,
     hasNoItemOption: true,
     isAcceptable: function (item) {
-        return item && item.hasMixin('Equippable') && item.isWieldable();
+        return item && item.hasMixin('Wieldable');
     },
     ok: function (selectedItems) {
         // Check if we selected 'no item'
@@ -557,7 +559,7 @@ Game.Screen.wearScreen = new Game.Screen.ItemListScreen({
     canSelectMultipleItems: false,
     hasNoItemOption: true,
     isAcceptable: function (item) {
-        return item && item.hasMixin('Equippable') && item.isWearable();
+        return item && item.hasMixin('Wearable');
     },
     ok: function (selectedItems) {
         // Check if we selected 'no item'

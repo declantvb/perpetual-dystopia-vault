@@ -22,11 +22,8 @@ Game.ItemRepository.define('pumpkin', {
     character: '%',
     foreground: 'orange',
     foodValue: 50,
-    attackValue: 2,
     defenseValue: 2,
-    wearable: true,
-    wieldable: true,
-    mixins: [Game.ItemMixins.Edible, Game.ItemMixins.Equippable]
+    mixins: [Game.ItemMixins.Edible, Game.ItemMixins.Wearable]
 });
 
 Game.ItemRepository.define('meat', {
@@ -55,34 +52,20 @@ Game.ItemRepository.define('rock', {
 // Weapons
 Game.ItemRepository.define('dagger', {
     name: 'dagger',
-    character: ')',
+    character: '/',
     foreground: 'gray',
     attackValue: 5,
-    wieldable: true,
-    mixins: [Game.ItemMixins.Equippable]
+    mixins: [Game.ItemMixins.Wieldable]
 }, {
     disableRandomCreation: true
 });
 
-Game.ItemRepository.define('sword', {
-    name: 'sword',
+Game.ItemRepository.define('sling', {
+    name: 'sling',
     character: ')',
-    foreground: 'white',
-    attackValue: 10,
-    wieldable: true,
-    mixins: [Game.ItemMixins.Equippable]
-}, {
-    disableRandomCreation: true
-});
-
-Game.ItemRepository.define('staff', {
-    name: 'staff',
-    character: ')',
-    foreground: 'yellow',
+    foreground: 'brown',
     attackValue: 5,
-    defenseValue: 3,
-    wieldable: true,
-    mixins: [Game.ItemMixins.Equippable]
+    mixins: [Game.ItemMixins.Wieldable]
 }, {
     disableRandomCreation: true
 });
@@ -93,30 +76,7 @@ Game.ItemRepository.define('tunic', {
     character: '[',
     foreground: 'green',
     defenseValue: 2,
-    wearable: true,
-    mixins: [Game.ItemMixins.Equippable]
-}, {
-    disableRandomCreation: true
-});
-
-Game.ItemRepository.define('chainmail', {
-    name: 'chainmail',
-    character: '[',
-    foreground: 'white',
-    defenseValue: 4,
-    wearable: true,
-    mixins: [Game.ItemMixins.Equippable]
-}, {
-    disableRandomCreation: true
-});
-
-Game.ItemRepository.define('platemail', {
-    name: 'platemail',
-    character: '[',
-    foreground: 'aliceblue',
-    defenseValue: 6,
-    wearable: true,
-    mixins: [Game.ItemMixins.Equippable]
+    mixins: [Game.ItemMixins.Wearable]
 }, {
     disableRandomCreation: true
 });

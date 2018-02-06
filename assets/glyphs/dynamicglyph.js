@@ -19,7 +19,7 @@ Game.DynamicGlyph = function(properties) {
         // also make sure not to override a property that
         // already exists on the entity.
         for (var key in mixins[i]) {
-            if (key != 'init' && key != 'name' && key != 'listeners' 
+            if (key != 'init' && key != 'name' && key != 'listeners' && key != 'groupName'
                 && !this.hasOwnProperty(key)) {
                 this[key] = mixins[i][key];
             }
