@@ -58,7 +58,7 @@ Game.ItemRepository.define('dagger', {
     foreground: 'gray',
     slot: Game.ItemSlots.MainHand,
     attackValue: 5,
-    mixins: [Game.ItemMixins.Equippable, Game.ItemMixins.Wieldable]
+    mixins: [Game.ItemMixins.Equippable, Game.ItemMixins.Melee]
 }, {
     disableRandomCreation: true
 });
@@ -67,9 +67,20 @@ Game.ItemRepository.define('sling', {
     name: 'sling',
     character: ')',
     foreground: 'brown',
-    slot: Game.ItemSlots.BothHands,
+    slot: Game.ItemSlots.MainHand,
     attackValue: 5,
-    mixins: [Game.ItemMixins.Equippable, Game.ItemMixins.Wieldable]
+    mixins: [Game.ItemMixins.Equippable, Game.ItemMixins.Ranged]
+}, {
+    disableRandomCreation: true
+});
+
+Game.ItemRepository.define('shot', {
+    name: 'shot',
+    character: '\'',
+    foreground: 'lightgrey',
+    attackValue: 2,
+    ammunitionType: 'shot',
+    mixins: [Game.ItemMixins.Ammunition]
 }, {
     disableRandomCreation: true
 });

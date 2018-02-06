@@ -216,6 +216,19 @@ Game.Screen.playScreen = {
                     offsets.x, offsets.y);
                 this.setSubScreen(Game.Screen.lookScreen);
                 return;
+            } else if (inputData.keyCode === ROT.VK_F) {
+                // Setup the fire screen.
+                var weapons = this._player.getWeapons(Game.ItemMixins.Ranged);
+                if (weapons.length == 0) {
+                    Game.sendMessage(this._player, "You do not have a ranged weapon equipped.");
+                } else {
+                    var offsets = this.getScreenOffsets();
+                    Game.Screen.rangedAttackScreen.setup(this._player,
+                        this._player.getX(), this._player.getY(),
+                        offsets.x, offsets.y);
+                    this.setSubScreen(Game.Screen.rangedAttackScreen);
+                    return;
+                }
             } else if (inputData.keyCode === ROT.VK_G) {
                 var items = this._player.getMap().getItemsAt(this._player.getX(),
                     this._player.getY(), this._player.getZ());
@@ -418,7 +431,7 @@ Game.Screen.ItemListScreen.prototype.render = function (display) {
             if (this._player.isEquipped(this._items[i])) {
                 if (this._items[i].hasMixin(Game.ItemMixins.Wearable)) {
                     suffix = ' (wearing)';
-                } else if (this._items[i].hasMixin(Game.ItemMixins.Wieldable)) {
+                } else if (this._items[i].hasMixin('Wieldable')) {
                     suffix = ' (wielding)';
                 } else {
                     console.log('somehow equipped an item that is not wearable or wieldable');
@@ -674,7 +687,7 @@ Game.Screen.gainStatScreen = {
 Game.Screen.TargetBasedScreen = function (template) {
     template = template || {};
     // By default, our ok return does nothing and does not consume a turn.
-    this._isAcceptableFunction = template['okFunction'] || function (x, y) {
+    this._okFunction = template['okFunction'] || function (x, y) {
         return false;
     };
     // The defaut caption function simply returns an empty string.
@@ -768,6 +781,7 @@ Game.Screen.TargetBasedScreen.prototype.render = function (display) {
 
 Game.Screen.TargetBasedScreen.prototype.handleInput = function (inputType, inputData) {
     // Move the cursor
+    var refresh = true;
     if (inputType == 'keydown') {
         if (inputData.keyCode === ROT.VK_LEFT) {
             this.moveCursor(-1, 0);
@@ -781,9 +795,10 @@ Game.Screen.TargetBasedScreen.prototype.handleInput = function (inputType, input
             Game.Screen.playScreen.setSubScreen(undefined);
         } else if (inputData.keyCode === ROT.VK_RETURN) {
             this.executeOkFunction();
+            refresh = false;
         }
     }
-    Game.refresh();
+    if (refresh) Game.refresh();
 };
 
 Game.Screen.TargetBasedScreen.prototype.moveCursor = function (dx, dy) {
@@ -841,6 +856,43 @@ Game.Screen.lookScreen = new Game.Screen.TargetBasedScreen({
                 Game.Tile.nullTile.getRepresentation(),
                 Game.Tile.nullTile.getDescription());
         }
+    }
+});
+
+Game.Screen.rangedAttackScreen = new Game.Screen.TargetBasedScreen({
+    captionFunction: function (x, y) {
+        var z = this._player.getZ();
+        var map = this._player.getMap();
+        // If the tile is explored, we can give a better capton
+        if (map.isExplored(x, y, z)) {
+            // If the tile isn't explored, we have to check if we can actually 
+            // see it before testing if there's an entity or item.
+            if (this._visibleCells[x + ',' + y]) {
+                var entity = map.getEntityAt(x, y, z);
+                if (entity && entity.hasMixin(Game.EntityMixins.Destructible)) {
+                    return String.format('%s - hp: %s, defense: %s',
+                        entity.describeA(true),
+                        entity.getHp(),
+                        entity.getDefenseValue());
+                } else {
+                    // If the tile is not explored, show the null tile description.
+                    return 'There is nothing to fire at there';
+                }
+            }
+        }
+
+        return 'You cannot see there';
+    },
+    okFunction: function (x, y) {
+        var z = this._player.getZ();
+        var map = this._player.getMap();
+        var entity = map.getEntityAt(x, y, z);
+        if (entity) {
+            this._player.rangedAttack(entity);
+        } else {
+            // todo put an ammunition here
+        }
+        return true;
     }
 });
 
@@ -924,7 +976,8 @@ Game.Screen.waitScreen = {
         var playScreen = Game.Screen.playScreen;
         playScreen.renderTiles.call(playScreen, display);
 
-        //Check for hostiles in sight radius
+        //Check for seen attackers
+        // todo replace with check for hostiles
         var seenEnemies = playScreen._player.seenEntitiesWith(Game.EntityMixins.Attacker);
 
         var alerts = playScreen._player.getAlerts();

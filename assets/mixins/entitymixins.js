@@ -13,19 +13,21 @@ Game.EntityMixins = {};
 // }
 
 // This signifies our entity can attack basic destructible enities
-Game.EntityMixins.Attacker = {
-    name: 'Attacker',
+Game.EntityMixins.MeleeAttacker = {
+    name: 'MeleeAttacker',
     groupName: 'Attacker',
     init: function (template) {
         this._attackValue = template['attackValue'] || 1;
     },
-    getAttackValue: function () {
+    getMeleeAttackValue: function () {
         var modifier = 0;
         // If we can equip items, then have to take into 
         // consideration weapons
         if (this.hasMixin(Game.EntityMixins.Equipper)) {
             this.getWeapons().forEach(weapon => {
-                modifier += weapon.getAttackValue();
+                if (weapon.hasMixin(Game.ItemMixins.Melee)) {
+                    modifier += weapon.getAttackValue();
+                }
             });
         }
         return this._attackValue + modifier;
@@ -37,11 +39,11 @@ Game.EntityMixins.Attacker = {
         this._attackValue += value;
         Game.sendMessage(this, "You look stronger!");
     },
-    attack: function (target) {
+    meleeAttack: function (target) {
         // If the target is destructible, calculate the damage
         // based on attack and defense value
         if (target.hasMixin('Destructible')) {
-            var attack = this.getAttackValue();
+            var attack = this.getMeleeAttackValue();
             var defense = target.getDefenseValue();
             var max = Math.max(0, attack - defense);
             var damage = 1 + Math.floor(Math.random() * max);
@@ -56,7 +58,57 @@ Game.EntityMixins.Attacker = {
     },
     listeners: {
         details: function () {
-            return [{ key: 'attack', value: this.getAttackValue() }];
+            return [{ key: 'melee attack', value: this.getMeleeAttackValue() }];
+        }
+    }
+};
+
+Game.EntityMixins.RangedAttacker = {
+    name: 'RangedAttacker',
+    groupName: 'Attacker',
+    init: function (template) {
+        this._attackValue = template['attackValue'] || 1;
+    },
+    getRangedAttackValue: function () {
+        var modifier = 0;
+        // If we can equip items, then have to take into 
+        // consideration weapons
+        if (this.hasMixin(Game.EntityMixins.Equipper)) {
+            this.getWeapons().forEach(weapon => {
+                if (weapon.hasMixin(Game.ItemMixins.Ranged)) {
+                    modifier += weapon.getAttackValue();
+                }
+            });
+        }
+        return this._attackValue + modifier;
+    },
+    increaseAttackValue: function (value) {
+        // If no value was passed, default to 2.
+        value = value || 2;
+        // Add to the attack value.
+        this._attackValue += value;
+        Game.sendMessage(this, "You look stronger!");
+    },
+    rangedAttack: function (target) {
+        // If the target is destructible, calculate the damage
+        // based on attack and defense value
+        if (target.hasMixin('Destructible')) {
+            var attack = this.getRangedAttackValue();
+            var defense = target.getDefenseValue();
+            var max = Math.max(0, attack - defense);
+            var damage = 1 + Math.floor(Math.random() * max);
+
+            Game.sendMessage(this, 'You strike the %s for %d damage!',
+                [target.getName(), damage]);
+            Game.sendMessage(target, 'The %s strikes you for %d damage!',
+                [this.getName(), damage]);
+
+            target.takeDamage(this, damage);
+        }
+    },
+    listeners: {
+        details: function () {
+            return [{ key: 'ranged attack', value: this.getRangedAttackValue() }];
         }
     }
 };
@@ -445,11 +497,12 @@ Game.EntityMixins.Equipper = {
         if (!item.hasMixin(Game.ItemMixins.Equippable)) return false;
         return this._slots[item.getSlot()] == item;
     },
-    getWeapons: function () {
+    getWeapons: function (type) {
         var weapons = [];
         for (const key in this._slots) {
             const item = this._slots[key];
-            if (item && item.hasMixin(Game.ItemMixins.Wieldable)) {
+            if (item && item.hasMixin('Wieldable') &&
+                (!type || item.hasMixin(type))) {
                 weapons.push(item);
             }
         }
@@ -537,7 +590,7 @@ Game.EntityMixins.ExperienceGainer = {
         onKill: function (victim) {
             var exp = victim.getMaxHp() + victim.getDefenseValue();
             if (victim.hasMixin('Attacker')) {
-                exp += victim.getAttackValue();
+                exp += victim.getMeleeAttackValue();
             }
             // Account for level differences
             if (victim.hasMixin('ExperienceGainer')) {

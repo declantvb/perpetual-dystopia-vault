@@ -123,8 +123,8 @@ Game.EntityMixins.TaskActor = {
         var offsets = Math.abs(player.getX() - this.getX()) +
             Math.abs(player.getY() - this.getY());
         if (offsets === 1) {
-            if (this.hasMixin('Attacker')) {
-                this.attack(player);
+            if (this.hasMixin('MeleeAttacker')) {
+                this.meleeAttack(player);
                 return;
             }
         }

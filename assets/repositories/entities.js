@@ -8,11 +8,12 @@ Game.PlayerTemplate = {
     sightRadius: 6,
     inventorySlots: 22,
     mixins: [Game.EntityMixins.PlayerActor,
-             Game.EntityMixins.Attacker, Game.EntityMixins.Destructible,
-             Game.EntityMixins.InventoryHolder, Game.EntityMixins.FoodConsumer,
+             Game.EntityMixins.MeleeAttacker, Game.EntityMixins.RangedAttacker,
+             Game.EntityMixins.Destructible,
+             Game.EntityMixins.InventoryHolder, Game.EntityMixins.Equipper,
+             Game.EntityMixins.FoodConsumer,
              Game.EntityMixins.Sight, 
              Game.EntityMixins.MessageRecipient, Game.EntityMixins.Alertable,
-             Game.EntityMixins.Equipper,
              Game.EntityMixins.ExperienceGainer, Game.EntityMixins.PlayerStatGainer]
 };
 
@@ -38,7 +39,7 @@ Game.EntityRepository.define('bat', {
     speed: 2000,
     corpseButcherTemplates: ['meat'],
     mixins: [Game.EntityMixins.TaskActor, 
-             Game.EntityMixins.Attacker, Game.EntityMixins.Destructible,
+             Game.EntityMixins.MeleeAttacker, Game.EntityMixins.Destructible,
              Game.EntityMixins.CorpseDropper,
              Game.EntityMixins.ExperienceGainer, Game.EntityMixins.RandomStatGainer]
 });
@@ -51,7 +52,7 @@ Game.EntityRepository.define('newt', {
     attackValue: 2,
     corpseButcherTemplates: ['meat'],
     mixins: [Game.EntityMixins.TaskActor,
-             Game.EntityMixins.Attacker, Game.EntityMixins.Destructible,
+             Game.EntityMixins.MeleeAttacker, Game.EntityMixins.Destructible,
              Game.EntityMixins.CorpseDropper,
              Game.EntityMixins.ExperienceGainer, Game.EntityMixins.RandomStatGainer]
 });
@@ -66,7 +67,7 @@ Game.EntityRepository.define('wolf', {
     corpseButcherTemplates: ['meat'],
     tasks: ['hunt', 'wander'],
     mixins: [Game.EntityMixins.TaskActor, Game.EntityMixins.Sight,
-             Game.EntityMixins.Attacker, Game.EntityMixins.Destructible,
+             Game.EntityMixins.MeleeAttacker, Game.EntityMixins.Destructible,
              Game.EntityMixins.CorpseDropper,
              Game.EntityMixins.ExperienceGainer, Game.EntityMixins.RandomStatGainer]
 });
@@ -80,7 +81,7 @@ Game.EntityRepository.define('deer', {
     sightRadius: 6,
     corpseButcherTemplates: ['meat'],
     mixins: [Game.EntityMixins.TaskActor, Game.EntityMixins.Sight,
-             Game.EntityMixins.Attacker, Game.EntityMixins.Destructible,
+             Game.EntityMixins.MeleeAttacker, Game.EntityMixins.Destructible,
              Game.EntityMixins.CorpseDropper,
              Game.EntityMixins.ExperienceGainer, Game.EntityMixins.RandomStatGainer]
 });

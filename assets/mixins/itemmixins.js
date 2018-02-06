@@ -62,8 +62,9 @@ Game.ItemMixins.Equippable = {
     }
 };
 
-Game.ItemMixins.Wieldable = {
-    name: 'Wieldable',
+Game.ItemMixins.Melee = {
+    name: 'Melee',
+    groupName: 'Wieldable',
     init: function (template) {
         this._attackValue = template['attackValue'] || 0;
     },
@@ -73,7 +74,35 @@ Game.ItemMixins.Wieldable = {
     listeners: {
         details: function () {
             var results = [];
-            results.push({ key: 'attack', value: this.getAttackValue() });
+            results.push({ key: 'melee attack', value: this.getAttackValue() });
+            return results;
+        }
+    }
+};
+
+Game.ItemMixins.Ranged = {
+    name: 'Ranged',
+    groupName: 'Wieldable',
+    init: function (template) {
+        this._attackValue = template['attackValue'] || 0;
+        this._range = template['range'] || 0;
+        this._ammunitionType = template['ammunitionType'] || 0;
+    },
+    getAttackValue: function () {
+        return this._attackValue;
+    },
+    getRange: function () {
+        return this._range;
+    },
+    getAmmunitionType: function () {
+        return this._ammunitionType;
+    },
+    listeners: {
+        details: function () {
+            var results = [];
+            results.push({ key: 'ranged attack', value: this.getAttackValue() });
+            results.push({ key: 'range', value: this.getRange() });
+            results.push({ key: 'ammo', value: this.getAmmunitionType() });
             return results;
         }
     }
@@ -91,6 +120,33 @@ Game.ItemMixins.Wearable = {
         details: function () {
             var results = [];
             results.push({ key: 'defense', value: this.getDefenseValue() });
+            return results;
+        }
+    }
+};
+
+Game.AmmunitionTypes = {
+    Shot: 'shot',
+    Arrow: 'arrow',
+};
+
+Game.ItemMixins.Ammunition = {
+    name: 'Ammunition',
+    init: function (template) {
+        this._attackValue = template['attackValue'] || 0;
+        this._ammunitionType = template['ammunitionType'] || 0;
+    },
+    getAttackValue: function () {
+        return this._attackValue;
+    },
+    getAmmunitionType: function () {
+        return this._ammunitionType;
+    },
+    listeners: {
+        details: function () {
+            var results = [];
+            results.push({ key: 'ranged attack', value: this.getAttackValue() });
+            results.push({ key: 'type', value: this.getAmmunitionType() });
             return results;
         }
     }
