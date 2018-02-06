@@ -22,8 +22,10 @@ Game.ItemRepository.define('pumpkin', {
     character: '%',
     foreground: 'orange',
     foodValue: 50,
+    slot: Game.ItemSlots.Head,
     defenseValue: 2,
-    mixins: [Game.ItemMixins.Edible, Game.ItemMixins.Wearable]
+    mixins: [Game.ItemMixins.Edible, 
+        Game.ItemMixins.Equippable, Game.ItemMixins.Wearable]
 });
 
 Game.ItemRepository.define('meat', {
@@ -54,8 +56,9 @@ Game.ItemRepository.define('dagger', {
     name: 'dagger',
     character: '/',
     foreground: 'gray',
+    slot: Game.ItemSlots.MainHand,
     attackValue: 5,
-    mixins: [Game.ItemMixins.Wieldable]
+    mixins: [Game.ItemMixins.Equippable, Game.ItemMixins.Wieldable]
 }, {
     disableRandomCreation: true
 });
@@ -64,8 +67,9 @@ Game.ItemRepository.define('sling', {
     name: 'sling',
     character: ')',
     foreground: 'brown',
+    slot: Game.ItemSlots.BothHands,
     attackValue: 5,
-    mixins: [Game.ItemMixins.Wieldable]
+    mixins: [Game.ItemMixins.Equippable, Game.ItemMixins.Wieldable]
 }, {
     disableRandomCreation: true
 });
@@ -75,8 +79,9 @@ Game.ItemRepository.define('tunic', {
     name: 'tunic',
     character: '[',
     foreground: 'green',
+    slot: Game.ItemSlots.Chest,
     defenseValue: 2,
-    mixins: [Game.ItemMixins.Wearable]
+    mixins: [Game.ItemMixins.Equippable, Game.ItemMixins.Wearable]
 }, {
     disableRandomCreation: true
 });

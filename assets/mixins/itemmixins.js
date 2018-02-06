@@ -36,9 +36,34 @@ Game.ItemMixins.Edible = {
 };
 
 // Equipment mixins
+
+Game.ItemSlots = {
+    Head: 'head',
+    Chest: 'chest',
+    //Legs: 'legs',
+    MainHand: 'main hand',
+    //OffHand: 'off hand',
+};
+
+Game.ItemMixins.Equippable = {
+    name: 'Equippable',
+    init: function (template) {
+        this._slot = template['slot'];
+    },
+    getSlot: function () {
+        return this._slot;
+    },
+    listeners: {
+        details: function () {
+            var results = [];
+            results.push({ key: 'slot', value: this.getSlot() });
+            return results;
+        }
+    }
+};
+
 Game.ItemMixins.Wieldable = {
     name: 'Wieldable',
-    groupName: 'Equippable',
     init: function (template) {
         this._attackValue = template['attackValue'] || 0;
     },
@@ -56,7 +81,6 @@ Game.ItemMixins.Wieldable = {
 
 Game.ItemMixins.Wearable = {
     name: 'Wearable',
-    groupName: 'Equippable',
     init: function (template) {
         this._defenseValue = template['defenseValue'] || 0;
     },

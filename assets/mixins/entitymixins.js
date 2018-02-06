@@ -22,14 +22,11 @@ Game.EntityMixins.Attacker = {
     getAttackValue: function () {
         var modifier = 0;
         // If we can equip items, then have to take into 
-        // consideration weapon and armor
+        // consideration weapons
         if (this.hasMixin(Game.EntityMixins.Equipper)) {
-            if (this.getWeapon()) {
-                modifier += this.getWeapon().getAttackValue();
-            }
-            if (this.getArmor()) {
-                modifier += this.getArmor().getAttackValue();
-            }
+            this.getWeapons().forEach(weapon => {
+                modifier += weapon.getAttackValue();
+            });
         }
         return this._attackValue + modifier;
     },
@@ -78,14 +75,11 @@ Game.EntityMixins.Destructible = {
     getDefenseValue: function () {
         var modifier = 0;
         // If we can equip items, then have to take into 
-        // consideration weapon and armor
+        // consideration armor
         if (this.hasMixin(Game.EntityMixins.Equipper)) {
-            if (this.getWeapon()) {
-                modifier += this.getWeapon().getDefenseValue();
-            }
-            if (this.getArmor()) {
-                modifier += this.getArmor().getDefenseValue();
-            }
+            this.getArmor().forEach(armor => {
+                modifier += armor.getDefenseValue();
+            });
         }
         return this._defenseValue + modifier;
     },
@@ -231,7 +225,7 @@ Game.EntityMixins.Sight = {
                     // If we have items, we want to render the top most item
                     if (items) {
                         Array.prototype.push.apply(seenItems, items);
-                    }                    
+                    }
                 });
 
             this._seenEntities = seenEntities;
@@ -296,7 +290,7 @@ Game.EntityMixins.InventoryHolder = {
     },
     removeItem: function (i) {
         // If we can equip items, then make sure we unequip the item we are removing.
-        if (this._items[i] && this.hasMixin(Game.EntityMixins.Equipper)) {
+        if (this._items[i] && this.hasMixin(Game.EntityMixins.Equipper) && this.isEquipped(this._items[i])) {
             this.unequip(this._items[i]);
         }
         // Simply clear the inventory slot.
@@ -436,35 +430,40 @@ Game.EntityMixins.CorpseDropper = {
 Game.EntityMixins.Equipper = {
     name: 'Equipper',
     init: function (template) {
-        this._weapon = null;
-        this._armor = null;
+        this._slots = {};
+        for (const key in Game.ItemSlots) {
+            this._slots[Game.ItemSlots[key]] = null;
+        }
     },
-    wield: function (item) {
-        this._weapon = item;
-    },
-    unwield: function () {
-        this._weapon = null;
-    },
-    wear: function (item) {
-        this._armor = item;
-    },
-    takeOff: function () {
-        this._armor = null;
-    },
-    getWeapon: function () {
-        return this._weapon;
-    },
-    getArmor: function () {
-        return this._armor;
+    equip: function (item) {
+        this._slots[item.getSlot()] = item;
     },
     unequip: function (item) {
-        // Helper function to be called before getting rid of an item.
-        if (this._weapon === item) {
-            this.unwield();
+        this._slots[item.getSlot()] = null;
+    },
+    isEquipped: function (item) {
+        if (!item.hasMixin(Game.ItemMixins.Equippable)) return false;
+        return this._slots[item.getSlot()] == item;
+    },
+    getWeapons: function () {
+        var weapons = [];
+        for (const key in this._slots) {
+            const item = this._slots[key];
+            if (item && item.hasMixin(Game.ItemMixins.Wieldable)) {
+                weapons.push(item);
+            }
         }
-        if (this._armor === item) {
-            this.takeOff();
+        return weapons;
+    },
+    getArmor: function () {
+        var armor = [];
+        for (const key in this._slots) {
+            const item = this._slots[key];
+            if (item && item.hasMixin(Game.ItemMixins.Wearable)) {
+                armor.push(item);
+            }
         }
+        return armor;
     }
 };
 

@@ -9,7 +9,7 @@ Game.Screen.startScreen = {
         var title = 'Perpetual Dystopia Vault';
         var prompt = 'Press [Enter] to start!';
         var y = 5;
-        display.drawText(Game.getScreenWidth() / 2 - title.length / 2, y++, '%c{yellow}'+title);
+        display.drawText(Game.getScreenWidth() / 2 - title.length / 2, y++, '%c{yellow}' + title);
         display.drawText(Game.getScreenWidth() / 2 - prompt.length / 2, y++, prompt);
     },
     handleInput: function (inputType, inputData) {
@@ -36,6 +36,7 @@ Game.Screen.playScreen = {
         this._player = new Game.Entity(Game.PlayerTemplate);
         //todo debug
         this._player.addItem(Game.ItemRepository.create('sling'));
+        this._player.addItem(Game.ItemRepository.create('tunic'));
         var tiles = new Game.Builder(width, height, depth).getTiles();
         var map = new Game.Map.Cave(tiles, this._player);
         // Start the map's engine
@@ -352,9 +353,9 @@ Game.Screen.ItemListScreen = function (template) {
     this._caption = template['caption'];
     this._okFunction = template['ok'];
     // By default, we use the identity function
-    this._isAcceptableFunction = template['isAcceptable'] || function (x) {
-        return x;
-    }
+    this._isAcceptableFunction = template['isAcceptable'] || (x => x);
+    // By default, we don't preselect anything
+    this._isSelectedFunction = template['isSelected'] || (x => false);
     // Whether the user can select items at all.
     this._canSelectItem = template['canSelect'];
     // Whether the user can select multiple items.
@@ -370,17 +371,20 @@ Game.Screen.ItemListScreen.prototype.setup = function (player, items, extra) {
     // Iterate over each item, keeping only the aceptable ones and counting
     // the number of acceptable items.
     var that = this;
-    this._items = items.map(function (item) {
+    // Clean set of selected indices
+    this._selectedIndices = {};
+    this._items = items.map(function (item, index) {
         // Transform the item into null if it's not acceptable
         if (that._isAcceptableFunction(item)) {
+            if (that._isSelectedFunction(item)) {
+                that._selectedIndices[index] = true;
+            }
             count++;
             return item;
         } else {
             return null;
         }
     });
-    // Clean set of selected indices
-    this._selectedIndices = {};
 
     //Copy over extra properties
     for (var key in extra) {
@@ -411,10 +415,14 @@ Game.Screen.ItemListScreen.prototype.render = function (display) {
                 this._selectedIndices[i]) ? '+' : '-';
             // Check if the item is worn or wielded
             var suffix = '';
-            if (this._items[i] === this._player.getArmor()) {
-                suffix = ' (wearing)';
-            } else if (this._items[i] === this._player.getWeapon()) {
-                suffix = ' (wielding)';
+            if (this._player.isEquipped(this._items[i])) {
+                if (this._items[i].hasMixin(Game.ItemMixins.Wearable)) {
+                    suffix = ' (wearing)';
+                } else if (this._items[i].hasMixin(Game.ItemMixins.Wieldable)) {
+                    suffix = ' (wielding)';
+                } else {
+                    console.log('somehow equipped an item that is not wearable or wieldable');
+                }
             }
             // Render at the correct row and add 2.
             display.drawText(0, 2 + row, letter + ' ' + selectionState + ' ' +
@@ -425,15 +433,21 @@ Game.Screen.ItemListScreen.prototype.render = function (display) {
 };
 
 Game.Screen.ItemListScreen.prototype.executeOkFunction = function () {
-    // Gather the selected items.
+    // Gather the selected and not selected items.
     var selectedItems = {};
-    for (var key in this._selectedIndices) {
-        selectedItems[key] = this._items[key];
+    var unSelectedItems = {};
+    for (const key in this._items) {
+        if (!this._items.hasOwnProperty(key) || !this._items[key]) continue;
+        if (this._selectedIndices[key]) {
+            selectedItems[key] = this._items[key];
+        } else {
+            unSelectedItems[key] = this._items[key];
+        }
     }
     // Switch back to the play screen.
     Game.Screen.playScreen.setSubScreen(undefined);
     // Call the OK function and end the player's turn if it return true.
-    if (this._okFunction(selectedItems)) {
+    if (this._okFunction(selectedItems, unSelectedItems)) {
         this._player.getMap().getEngine().unlock();
     }
 };
@@ -442,8 +456,7 @@ Game.Screen.ItemListScreen.prototype.handleInput = function (inputType, inputDat
         // If the user hit escape, hit enter and can't select an item, or hit
         // enter without any items selected, simply cancel out
         if (inputData.keyCode === ROT.VK_ESCAPE ||
-            (inputData.keyCode === ROT.VK_RETURN &&
-                (!this._canSelectItem || Object.keys(this._selectedIndices).length === 0))) {
+            (inputData.keyCode === ROT.VK_RETURN && !this._canSelectItem)) {
             Game.Screen.playScreen.setSubScreen(undefined);
             // Handle pressing return when items are selected
         } else if (inputData.keyCode === ROT.VK_RETURN) {
@@ -528,51 +541,65 @@ Game.Screen.eatScreen = new Game.Screen.ItemListScreen({
     }
 });
 
+// todo you can currently wield multiple items,
+// if they fit in the same slots the last one will end up equipped
 Game.Screen.wieldScreen = new Game.Screen.ItemListScreen({
     caption: 'Choose the item you wish to wield',
     canSelect: true,
-    canSelectMultipleItems: false,
-    hasNoItemOption: true,
+    canSelectMultipleItems: true,
     isAcceptable: function (item) {
         return item && item.hasMixin('Wieldable');
     },
-    ok: function (selectedItems) {
-        // Check if we selected 'no item'
-        var keys = Object.keys(selectedItems);
-        if (keys.length === 0) {
-            this._player.unwield();
-            Game.sendMessage(this._player, "You are empty handed.")
-        } else {
-            // Make sure to unequip the item first in case it is the armor.
-            var item = selectedItems[keys[0]];
-            this._player.unequip(item);
-            this._player.wield(item);
-            Game.sendMessage(this._player, "You are wielding %s.", [item.describeA()]);
+    isSelected: function (item) {
+        return item && this._player.isEquipped(item);
+    },
+    ok: function (selectedItems, unSelectedItems) {
+        for (const key in selectedItems) {
+            const item = selectedItems[key];
+            if (!this._player.isEquipped(item)) {
+                this._player.equip(item);
+                Game.sendMessage(this._player, "You wield %s.", [item.describeThe()]);
+            }
+        }
+
+        for (const key in unSelectedItems) {
+            const item = unSelectedItems[key];
+            if (this._player.isEquipped(item)) {
+                this._player.unequip(item);
+                Game.sendMessage(this._player, "You put away %s.", [item.describeThe()]);
+            }
         }
         return true;
     }
 });
 
+// todo you can currently wear multiple items,
+// if they fit in the same slots the last one will end up equipped
 Game.Screen.wearScreen = new Game.Screen.ItemListScreen({
     caption: 'Choose the item you wish to wear',
     canSelect: true,
-    canSelectMultipleItems: false,
-    hasNoItemOption: true,
+    canSelectMultipleItems: true,
     isAcceptable: function (item) {
         return item && item.hasMixin('Wearable');
     },
-    ok: function (selectedItems) {
-        // Check if we selected 'no item'
-        var keys = Object.keys(selectedItems);
-        if (keys.length === 0) {
-            this._player.unwield();
-            Game.sendMessage(this._player, "You are not wearing anthing.")
-        } else {
-            // Make sure to unequip the item first in case it is the weapon.
-            var item = selectedItems[keys[0]];
-            this._player.unequip(item);
-            this._player.wear(item);
-            Game.sendMessage(this._player, "You are wearing %s.", [item.describeA()]);
+    isSelected: function (item) {
+        return this._player.isEquipped(item);
+    },
+    ok: function (selectedItems, unSelectedItems) {
+        for (const key in selectedItems) {
+            const item = selectedItems[key];
+            if (!this._player.isEquipped(item)) {
+                this._player.equip(item);
+                Game.sendMessage(this._player, "You put on %s.", [item.describeThe()]);
+            }
+        }
+
+        for (const key in unSelectedItems) {
+            const item = unSelectedItems[key];
+            if (this._player.isEquipped(item)) {
+                this._player.unequip(item);
+                Game.sendMessage(this._player, "You take off %s.", [item.describeThe()]);
+            }
         }
         return true;
     }
@@ -858,7 +885,7 @@ Game.Screen.butcherScreen = new Game.Screen.ItemListScreen({
     ok: function (selectedItems) {
         var keys = Object.keys(selectedItems);
         if (!this._player.canAddItems(keys.length)) {
-            Game.sendMessage(this._player, "Your inventory cannot hold that many items!");
+            Game.sendMessage(this._player, "You cannot hold that many items!");
         }
         var player = this._player;
         var butcherable = this.butcherable;
