@@ -178,7 +178,7 @@ Game.ItemMixins.Butcherable = {
         details: function () {
             var results = [];
             if (this.getPotentialTemplates().length > 0) {
-                results.push({ key: 'butchering results', value: this.getPotentialTemplates() });
+                results.push({ key: 'butchering results', value: this.getItems().map(i => i.getName()) });
             }
             return results;
         }

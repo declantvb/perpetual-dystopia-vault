@@ -319,53 +319,30 @@ Game.sendMessageNearby = function (map, centerX, centerY, centerZ, message, args
 Game.EntityMixins.InventoryHolder = {
     name: 'InventoryHolder',
     init: function (template) {
-        // Default to 10 inventory slots.
-        var inventorySlots = template['inventorySlots'] || 10;
         // Set up an empty inventory.
-        this._items = new Array(inventorySlots);
+        this._items = [];
     },
     getItems: function () {
         return this._items;
     },
-    getItem: function (i) {
-        return this._items[i];
-    },
     addItem: function (item) {
-        // Try to find a slot, returning true only if we could add the item.
-        for (var i = 0; i < this._items.length; i++) {
-            if (!this._items[i]) {
-                this._items[i] = item;
-                return true;
-            }
-        }
-        return false;
+        this._items.push(item);
+        return true;
     },
-    removeItem: function (i) {
+    removeItem: function (item) {
         // If we can equip items, then make sure we unequip the item we are removing.
-        if (this._items[i] && this.hasMixin(Game.EntityMixins.Equipper) && this.isEquipped(this._items[i])) {
-            this.unequip(this._items[i]);
+        var index = this._items.indexOf(item);
+        if (index >= 0 && this.hasMixin(Game.EntityMixins.Equipper) && this.isEquipped(item)) {
+            this.unequip(item);
         }
         // Simply clear the inventory slot.
-        this._items[i] = null;
+        this._items.splice(index, 1);
     },
     canAddItem: function () {
-        // Check if we have an empty slot.
-        for (var i = 0; i < this._items.length; i++) {
-            if (!this._items[i]) {
-                return true;
-            }
-        }
-        return false;
+        return true;
     },
     canAddItems: function (num) {
-        // Check if we have an empty slot.
-        var free = 0;
-        for (var i = 0; i < this._items.length; i++) {
-            if (!this._items[i]) {
-                free++;
-            }
-        }
-        return free >= num;
+        return true;
     },
     pickupItems: function (indices) {
         // Allows the user to pick up items from the map, where indices is
@@ -390,13 +367,13 @@ Game.EntityMixins.InventoryHolder = {
         // Return true only if we added all items
         return added === indices.length;
     },
-    dropItem: function (i) {
+    dropItem: function (item) {
         // Drops an item to the current map tile
-        if (this._items[i]) {
+        if (this._items.indexOf(item) >= 0) {
             if (this._map) {
-                this._map.addItem(this.getX(), this.getY(), this.getZ(), this._items[i]);
+                this._map.addItem(this.getX(), this.getY(), this.getZ(), item);
             }
-            this.removeItem(i);
+            this.removeItem(item);
         }
     }
 };

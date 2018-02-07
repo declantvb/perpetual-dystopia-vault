@@ -529,7 +529,7 @@ Game.Screen.dropScreen = new Game.Screen.ItemListScreen({
     canSelectMultipleItems: false,
     ok: function (selectedItems) {
         // Drop the selected item
-        this._player.dropItem(Object.keys(selectedItems)[0]);
+        this._player.dropItem(selectedItems[Object.keys(selectedItems)[0]]);
         return true;
     }
 });
@@ -548,7 +548,7 @@ Game.Screen.eatScreen = new Game.Screen.ItemListScreen({
         Game.sendMessage(this._player, "You eat %s.", [item.describeThe()]);
         item.eat(this._player);
         if (!item.hasRemainingConsumptions()) {
-            this._player.removeItem(key);
+            this._player.removeItem(item);
         }
         return true;
     }
