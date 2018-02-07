@@ -193,15 +193,14 @@ Game.Screen.playScreen = {
                     'You have nothing to eat.');
                 return;
             } else if (inputData.keyCode === ROT.VK_W) {
-                if (inputData.shiftKey) {
-                    // Show the wear screen
-                    this.showItemsSubScreen(Game.Screen.wearScreen, this._player.getItems(),
-                        'You have nothing to wear.');
-                } else {
-                    // Show the wield screen
-                    this.showItemsSubScreen(Game.Screen.wieldScreen, this._player.getItems(),
-                        'You have nothing to wield.');
-                }
+                // Show the wear/wield screen
+                this.showItemsSubScreen(Game.Screen.equipScreen, this._player.getItems(),
+                    'You have nothing to wear or wield.');
+                return;
+            } else if (inputData.keyCode === ROT.VK_T) {
+                // Show the equipment screen
+                this.showItemsSubScreen(Game.Screen.unequipScreen, this._player.getEquippedItems(),
+                    'You have nothing equipped.');
                 return;
             } else if (inputData.keyCode === ROT.VK_X) {
                 // Show the drop screen
@@ -235,8 +234,9 @@ Game.Screen.playScreen = {
                 // If there is only one item, directly pick it up
                 if (items && items.length === 1) {
                     var item = items[0];
-                    if (this._player.pickupItems([0])) {
+                    if (this._player.addItem(item)) {
                         Game.sendMessage(this._player, "You pick up %s.", [item.describeA()]);
+                        this._player.getMap().setItemsAt(this._player.getX(), this._player.getY(), this._player.getZ(), []);
                     } else {
                         Game.sendMessage(this._player, "Your inventory is full! Nothing was picked up.");
                     }
@@ -317,7 +317,7 @@ Game.Screen.playScreen = {
         Game.refresh();
     },
     showItemsSubScreen: function (subScreen, items, emptyMessage) {
-        if (items && subScreen.setup(this._player, items) > 0) {
+        if (items && subScreen.setup(this._player, items, this._map) > 0) {
             this.setSubScreen(subScreen);
         } else {
             Game.sendMessage(this._player, emptyMessage);
@@ -367,8 +367,6 @@ Game.Screen.ItemListScreen = function (template) {
     this._okFunction = template['ok'];
     // By default, we use the identity function
     this._isAcceptableFunction = template['isAcceptable'] || (x => x);
-    // By default, we don't preselect anything
-    this._isSelectedFunction = template['isSelected'] || (x => false);
     // Whether the user can select items at all.
     this._canSelectItem = template['canSelect'];
     // Whether the user can select multiple items.
@@ -379,19 +377,15 @@ Game.Screen.ItemListScreen = function (template) {
 
 Game.Screen.ItemListScreen.prototype.setup = function (player, items, extra) {
     this._player = player;
+    this._map = player.getMap();
     // Should be called before switching to the screen.
     var count = 0;
-    // Iterate over each item, keeping only the aceptable ones and counting
+    // Iterate over each item, keeping only the acceptable ones and counting
     // the number of acceptable items.
     var that = this;
-    // Clean set of selected indices
-    this._selectedIndices = {};
     this._items = items.map(function (item, index) {
         // Transform the item into null if it's not acceptable
         if (that._isAcceptableFunction(item)) {
-            if (that._isSelectedFunction(item)) {
-                that._selectedIndices[index] = true;
-            }
             count++;
             return item;
         } else {
@@ -399,11 +393,30 @@ Game.Screen.ItemListScreen.prototype.setup = function (player, items, extra) {
         }
     });
 
+    // 2d jagged array
+    this._groupedItems = [];
+    this._items.forEach(item => {
+        // blank item, ignore
+        if (!item) return;
+
+        for (let i = 0; i < that._groupedItems.length; i++) {
+            const savedItem = that._groupedItems[i];
+            if (item.stackableWith(that._groupedItems[i][0])) {
+                that._groupedItems[i].push(item);
+                return;
+            }
+        }
+
+        // else
+        that._groupedItems.push([item]);
+    });
+
+    // Clean set of selected indices
+    this._selectedIndices = {};
+
     //Copy over extra properties
     for (var key in extra) {
-        if (!this.hasOwnProperty(key)) {
-            this[key] = extra[key];
-        }
+        this[key] = extra[key];
     }
     return count;
 };
@@ -416,51 +429,44 @@ Game.Screen.ItemListScreen.prototype.render = function (display) {
     if (this._hasNoItemOption) {
         display.drawText(0, 1, '0 - no item');
     }
+
     var row = 0;
-    for (var i = 0; i < this._items.length; i++) {
-        // If we have an item, we want to render it.
-        if (this._items[i]) {
-            // Get the letter matching the item's index
-            var letter = letters.substring(i, i + 1);
-            // If we have selected an item, show a +, else show a dash between
-            // the letter and the item's name.
-            var selectionState = (this._canSelectItem && this._canSelectMultipleItems &&
-                this._selectedIndices[i]) ? '+' : '-';
-            // Check if the item is worn or wielded
-            var suffix = '';
-            if (this._player.isEquipped(this._items[i])) {
-                if (this._items[i].hasMixin(Game.ItemMixins.Wearable)) {
-                    suffix = ' (wearing)';
-                } else if (this._items[i].hasMixin('Wieldable')) {
-                    suffix = ' (wielding)';
-                } else {
-                    console.log('somehow equipped an item that is not wearable or wieldable');
-                }
-            }
-            // Render at the correct row and add 2.
-            display.drawText(0, 2 + row, letter + ' ' + selectionState + ' ' +
-                this._items[i].describe() + suffix);
-            row++;
+    for (var i = 0; i < this._groupedItems.length; i++) {
+        // Get the letter matching the item's index
+        var letter = letters.substring(i, i + 1);
+        // If we have selected an item, show a +, else show a dash between
+        // the letter and the item's name.
+        var selectionState = (this._canSelectItem && this._canSelectMultipleItems &&
+            this._selectedIndices[i]) ? '+' : '-';
+
+        // if the item is a group, show the count
+        var prefix = '';
+        if (this._groupedItems[i].length > 1) {
+            prefix = this._groupedItems[i].length + ' ';
         }
+
+        // Render at the correct row and add 2.
+        display.drawText(0, 2 + row, vsprintf('%s %s %s', [letter, selectionState, prefix + this._groupedItems[i][0].describe(false, this._groupedItems[i].length > 1)]));
+        row++;
     }
 };
 
 Game.Screen.ItemListScreen.prototype.executeOkFunction = function () {
     // Gather the selected and not selected items.
-    var selectedItems = {};
-    var unSelectedItems = {};
-    for (const key in this._items) {
-        if (!this._items.hasOwnProperty(key) || !this._items[key]) continue;
+    var selectedGroups = {};
+    var unSelectedGroups = {};
+    for (const key in this._groupedItems) {
+        if (!this._groupedItems.hasOwnProperty(key) || !this._groupedItems[key]) continue;
         if (this._selectedIndices[key]) {
-            selectedItems[key] = this._items[key];
+            selectedGroups[key] = this._groupedItems[key];
         } else {
-            unSelectedItems[key] = this._items[key];
+            unSelectedGroups[key] = this._groupedItems[key];
         }
     }
     // Switch back to the play screen.
     Game.Screen.playScreen.setSubScreen(undefined);
     // Call the OK function and end the player's turn if it return true.
-    if (this._okFunction(selectedItems, unSelectedItems)) {
+    if (this._okFunction(selectedGroups, unSelectedGroups)) {
         this._player.getMap().getEngine().unlock();
     }
 };
@@ -484,7 +490,7 @@ Game.Screen.ItemListScreen.prototype.handleInput = function (inputType, inputDat
             // Check if it maps to a valid item by subtracting 'a' from the character
             // to know what letter of the alphabet we used.
             var index = inputData.keyCode - ROT.VK_A;
-            if (this._items[index]) {
+            if (this._groupedItems[index]) {
                 // If multiple selection is allowed, toggle the selection status, else
                 // select the item and exit the screen
                 if (this._canSelectMultipleItems) {
@@ -513,12 +519,36 @@ Game.Screen.pickupScreen = new Game.Screen.ItemListScreen({
     caption: 'Choose the items you wish to pickup',
     canSelect: true,
     canSelectMultipleItems: true,
-    ok: function (selectedItems) {
-        // Try to pick up all items, messaging the player if they couldn't all be
-        // picked up.
-        if (!this._player.pickupItems(Object.keys(selectedItems))) {
+    ok: function (selectedGroups, unSelectedGroups) {
+        //try add all, if can't add, put back on ground
+        var remaining = [];
+        for (const groupKey in selectedGroups) {
+            if (selectedGroups.hasOwnProperty(groupKey)) {
+                const group = selectedGroups[groupKey];
+                group.forEach(item => {
+                    if (!this._player.addItem(item)) {
+                        remaining.push(item);
+                    }
+                });
+            }
+        }
+
+        if (remaining.length > 0) {
             Game.sendMessage(this._player, "Your inventory is full! Not all items were picked up.");
         }
+
+        // add back the unselected items
+        for (const groupKey in unSelectedGroups) {
+            if (unSelectedGroups.hasOwnProperty(groupKey)) {
+                const group = unSelectedGroups[groupKey];
+                group.forEach(item => {
+                    remaining.push(item);
+                });
+            }
+        }
+
+        // put the remaining back down
+        this._map.setItemsAt(this._player.getX(), this._player.getY(), this._player.getZ(), remaining);
         return true;
     }
 });
@@ -527,9 +557,14 @@ Game.Screen.dropScreen = new Game.Screen.ItemListScreen({
     caption: 'Choose the item you wish to drop',
     canSelect: true,
     canSelectMultipleItems: false,
-    ok: function (selectedItems) {
+    ok: function (selectedGroups) {
         // Drop the selected item
-        this._player.dropItem(selectedItems[Object.keys(selectedItems)[0]]);
+        var items = selectedGroups[Object.keys(selectedGroups)[0]];
+        for (let i = 0; i < items.length; i++) {
+            const item = items[i];
+            this._player.removeItem(item);
+            this._map.addItem(this._player.getX(), this._player.getY(), this._player.getZ(), item);
+        }
         return true;
     }
 });
@@ -541,10 +576,10 @@ Game.Screen.eatScreen = new Game.Screen.ItemListScreen({
     isAcceptable: function (item) {
         return item && item.hasMixin('Edible');
     },
-    ok: function (selectedItems) {
+    ok: function (selectedGroups) {
         // Eat the item, removing it if there are no consumptions remaining.
-        var key = Object.keys(selectedItems)[0];
-        var item = selectedItems[key];
+        var group = selectedGroups[Object.keys(selectedGroups)[0]];
+        var item = group[0];
         Game.sendMessage(this._player, "You eat %s.", [item.describeThe()]);
         item.eat(this._player);
         if (!item.hasRemainingConsumptions()) {
@@ -554,64 +589,41 @@ Game.Screen.eatScreen = new Game.Screen.ItemListScreen({
     }
 });
 
-// todo you can currently wield multiple items,
+// todo you can currently wear/wield multiple items,
 // if they fit in the same slots the last one will end up equipped
-Game.Screen.wieldScreen = new Game.Screen.ItemListScreen({
-    caption: 'Choose the item you wish to wield',
+Game.Screen.equipScreen = new Game.Screen.ItemListScreen({
+    caption: 'Choose the item you wish to equip',
     canSelect: true,
     canSelectMultipleItems: true,
     isAcceptable: function (item) {
-        return item && item.hasMixin('Wieldable');
+        return item && item.hasMixin('Equippable');
     },
-    isSelected: function (item) {
-        return item && this._player.isEquipped(item);
-    },
-    ok: function (selectedItems, unSelectedItems) {
-        for (const key in selectedItems) {
-            const item = selectedItems[key];
+    ok: function (selectedGroups, unSelectedGroups) {
+        for (const key in selectedGroups) {
+            const group = selectedGroups[key];
+            const item = group[0];
             if (!this._player.isEquipped(item)) {
                 this._player.equip(item);
-                Game.sendMessage(this._player, "You wield %s.", [item.describeThe()]);
-            }
-        }
-
-        for (const key in unSelectedItems) {
-            const item = unSelectedItems[key];
-            if (this._player.isEquipped(item)) {
-                this._player.unequip(item);
-                Game.sendMessage(this._player, "You put away %s.", [item.describeThe()]);
+                this._player.removeItem(item);
+                Game.sendMessage(this._player, "You equip %s.", [item.describeThe()]);
             }
         }
         return true;
     }
 });
 
-// todo you can currently wear multiple items,
-// if they fit in the same slots the last one will end up equipped
-Game.Screen.wearScreen = new Game.Screen.ItemListScreen({
-    caption: 'Choose the item you wish to wear',
+Game.Screen.unequipScreen = new Game.Screen.ItemListScreen({
+    caption: 'Choose the item you wish to unequip',
     canSelect: true,
     canSelectMultipleItems: true,
-    isAcceptable: function (item) {
-        return item && item.hasMixin('Wearable');
-    },
-    isSelected: function (item) {
-        return this._player.isEquipped(item);
-    },
-    ok: function (selectedItems, unSelectedItems) {
-        for (const key in selectedItems) {
-            const item = selectedItems[key];
-            if (!this._player.isEquipped(item)) {
-                this._player.equip(item);
-                Game.sendMessage(this._player, "You put on %s.", [item.describeThe()]);
-            }
-        }
-
-        for (const key in unSelectedItems) {
-            const item = unSelectedItems[key];
+    ok: function (selectedGroups, unSelectedGroups) {
+        for (const key in selectedGroups) {
+            const group = selectedGroups[key];
+            const item = group[0];
             if (this._player.isEquipped(item)) {
+                this._player.addItem(item);
                 this._player.unequip(item);
-                Game.sendMessage(this._player, "You take off %s.", [item.describeThe()]);
+                Game.sendMessage(this._player, "You put away %s.", [item.describeThe()]);
             }
         }
         return true;
@@ -625,16 +637,73 @@ Game.Screen.examineScreen = new Game.Screen.ItemListScreen({
     isAcceptable: function (item) {
         return true;
     },
-    ok: function (selectedItems) {
-        var keys = Object.keys(selectedItems);
+    ok: function (selectedGroups) {
+        var keys = Object.keys(selectedGroups);
         if (keys.length > 0) {
-            var item = selectedItems[keys[0]];
-            Game.sendMessage(this._player, "It's %s (%s).",
+            var group = selectedGroups[keys[0]];
+            item = group[0];
+            if (group.length == 1) {
+                Game.sendMessage(this._player, "It's %s (%s).",
                 [
                     item.describeA(false),
                     item.details()
                 ]);
+            } else if (group.length > 1) {
+                Game.sendMessage(this._player, "It's %s %s (%s).",
+                [
+                    group.length,
+                    item.describe(false, true),
+                    item.details()
+                ]); 
+            }
         }
+        return true;
+    }
+});
+
+Game.Screen.butcherScreen = new Game.Screen.ItemListScreen({
+    caption: 'What do you want to butcher?',
+    canSelect: true,
+    canSelectMultipleItems: true,
+    ok: function (selectedGroups) {
+        var keys = Object.keys(selectedGroups);
+        if (!this._player.canAddItems(keys.length)) {
+            Game.sendMessage(this._player, "You cannot hold that many items!");
+        }
+        var player = this._player;
+        var butcherable = this.butcherable;
+        //todo variable time for butchering
+        Game.Screen.waitScreen.setup({
+            turnsToWait: keys.length * 5,
+            action: 'Butchering',
+            onComplete: function () {
+                var remaining = [];
+                for (let i = 0; i < keys.length; i++) {
+                    const group = selectedGroups[keys[i]];
+                    var count = 0;
+                    group.forEach(item => {
+                        if (!butcherable.removeItem(item)) {
+                            console.log('failed to remove item when butchering');
+                        }
+                        if (player.addItem(item)) {
+                            count++;
+                        } else {
+                            remaining.push(item);
+                        }
+                    });
+                    if (count == 1) {
+                        Game.sendMessage(player, "You pick up %s.", [group[0].describeA()]);
+                    } else if (count > 1) {
+                        Game.sendMessage(player, "You pick up %s %s.", [count, group[0].describe(false, true)]);
+                    }
+                }
+                if (remaining.length > 0) {
+                    Game.sendMessage(player, "Your inventory is full! Some items have been dropped");
+                    player.getMap().setItemsAt(player.getX(), player.getY(), player.getZ(), remaining);
+                }
+            }
+        });
+        Game.Screen.playScreen.setSubScreen(Game.Screen.waitScreen);
         return true;
     }
 });
@@ -930,40 +999,6 @@ Game.Screen.restScreen = {
     }
 };
 
-Game.Screen.butcherScreen = new Game.Screen.ItemListScreen({
-    caption: 'What do you want to butcher?',
-    canSelect: true,
-    canSelectMultipleItems: true,
-    ok: function (selectedItems) {
-        var keys = Object.keys(selectedItems);
-        if (!this._player.canAddItems(keys.length)) {
-            Game.sendMessage(this._player, "You cannot hold that many items!");
-        }
-        var player = this._player;
-        var butcherable = this.butcherable;
-        //todo variable time for butchering
-        Game.Screen.waitScreen.setup({
-            turnsToWait: keys.length * 5,
-            action: 'Butchering',
-            onComplete: function () {
-                for (let i = 0; i < keys.length; i++) {
-                    const item = selectedItems[keys[i]];
-                    if (player.addItem(item)) {
-                        Game.sendMessage(player, "You pick up %s.", [item.describeA()]);
-                        if (!butcherable.removeItem(item)) {
-                            console.log('failed to remove item after butchering');
-                        }
-                    } else {
-                        Game.sendMessage(player, "Your inventory is full! Some items have been dropped");
-                    }
-                }
-            }
-        });
-        Game.Screen.playScreen.setSubScreen(Game.Screen.waitScreen);
-        return true;
-    }
-});
-
 Game.Screen.waitScreen = {
     setup: function (template) {
         this._turnsToWait = template['turnsToWait'] || 0;
@@ -1034,9 +1069,11 @@ Game.Screen.helpScreen = {
         display.drawText(3, y++, '[g] to get items');
         display.drawText(3, y++, '[d] to drop items');
         display.drawText(3, y++, '[e] to eat items');
+        display.drawText(3, y++, '[i] to show inventory');
+        display.drawText(3, y++, '[f] to fire a ranged weapon');
         display.drawText(3, y++, '[b] to butcher a corpse');
-        display.drawText(3, y++, '[w] to wield items');
-        display.drawText(3, y++, '[W] to wear items');
+        display.drawText(3, y++, '[w] to wear or wield items');
+        display.drawText(3, y++, '[t] to take off items');
         display.drawText(3, y++, '[x] to examine items');
         display.drawText(3, y++, '[l] to look around you');
         display.drawText(3, y++, '[r] to rest for a time');

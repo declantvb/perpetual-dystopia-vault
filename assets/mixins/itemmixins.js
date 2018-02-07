@@ -21,11 +21,11 @@ Game.ItemMixins.Edible = {
     hasRemainingConsumptions: function () {
         return this._remainingConsumptions > 0;
     },
-    describe: function () {
+    describe: function (capitalize, plural) {
         if (this._maxConsumptions != this._remainingConsumptions) {
-            return 'partly eaten ' + Game.Item.prototype.describe.call(this);
+            return (capitalize ? 'P' : 'p') +'artly eaten ' + Game.Item.prototype.describe.call(this, false, plural);
         } else {
-            return this._name;
+            return Game.Item.prototype.describe.call(this, capitalize, plural);
         }
     },
     listeners: {
@@ -155,13 +155,10 @@ Game.ItemMixins.Ammunition = {
 Game.ItemMixins.Butcherable = {
     name: 'Butcherable',
     init: function (template) {
-        this._potentialTemplates = template['potentialTemplates'] || [];
-        this._items = this._potentialTemplates.map(element => {
+        var potentialTemplates = template['potentialTemplates'] || [];
+        this._items = potentialTemplates.map(element => {
             return Game.ItemRepository.create(element, { origin: this.getName() });
         });
-    },
-    getPotentialTemplates: function () {
-        return this._potentialTemplates;
     },
     getItems: function () {
         return this._items;
@@ -177,7 +174,7 @@ Game.ItemMixins.Butcherable = {
     listeners: {
         details: function () {
             var results = [];
-            if (this.getPotentialTemplates().length > 0) {
+            if (this.getItems().length > 0) {
                 results.push({ key: 'butchering results', value: this.getItems().map(i => i.getName()) });
             }
             return results;

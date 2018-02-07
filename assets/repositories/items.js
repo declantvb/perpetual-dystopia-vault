@@ -30,6 +30,7 @@ Game.ItemRepository.define('pumpkin', {
 
 Game.ItemRepository.define('meat', {
     name: 'chunk of meat',
+    pluralName: 'chunks of meat',
     character: '%',
     foreground: 'pink',
     foodValue: 40,
@@ -76,6 +77,7 @@ Game.ItemRepository.define('sling', {
 
 Game.ItemRepository.define('shot', {
     name: 'shot',
+    pluralName: 'shot',
     character: '\'',
     foreground: 'lightgrey',
     attackValue: 2,

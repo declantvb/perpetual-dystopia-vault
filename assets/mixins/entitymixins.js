@@ -326,55 +326,25 @@ Game.EntityMixins.InventoryHolder = {
         return this._items;
     },
     addItem: function (item) {
+        if (!item instanceof Game.Item) return false;
         this._items.push(item);
         return true;
     },
     removeItem: function (item) {
         // If we can equip items, then make sure we unequip the item we are removing.
         var index = this._items.indexOf(item);
-        if (index >= 0 && this.hasMixin(Game.EntityMixins.Equipper) && this.isEquipped(item)) {
-            this.unequip(item);
+        if (index >= 0) {
+            // Simply clear the inventory slot.
+            this._items.splice(index, 1);
+            return true;
         }
-        // Simply clear the inventory slot.
-        this._items.splice(index, 1);
+        return false;
     },
     canAddItem: function () {
         return true;
     },
     canAddItems: function (num) {
         return true;
-    },
-    pickupItems: function (indices) {
-        // Allows the user to pick up items from the map, where indices is
-        // the indices for the array returned by map.getItemsAt
-        var mapItems = this._map.getItemsAt(this.getX(), this.getY(), this.getZ());
-        var added = 0;
-        // Iterate through all indices.
-        for (var i = 0; i < indices.length; i++) {
-            // Try to add the item. If our inventory is not full, then splice the 
-            // item out of the list of items. In order to fetch the right item, we
-            // have to offset the number of items already added.
-            if (this.addItem(mapItems[indices[i] - added])) {
-                mapItems.splice(indices[i] - added, 1);
-                added++;
-            } else {
-                // Inventory is full
-                break;
-            }
-        }
-        // Update the map items
-        this._map.setItemsAt(this.getX(), this.getY(), this.getZ(), mapItems);
-        // Return true only if we added all items
-        return added === indices.length;
-    },
-    dropItem: function (item) {
-        // Drops an item to the current map tile
-        if (this._items.indexOf(item) >= 0) {
-            if (this._map) {
-                this._map.addItem(this.getX(), this.getY(), this.getZ(), item);
-            }
-            this.removeItem(item);
-        }
     }
 };
 
@@ -469,6 +439,18 @@ Game.EntityMixins.Equipper = {
     },
     unequip: function (item) {
         this._slots[item.getSlot()] = null;
+    },
+    getEquippedItems: function () {
+        var items = [];
+        for (const key in this._slots) {
+            if (this._slots.hasOwnProperty(key)) {
+                const item = this._slots[key];
+                if (item) {
+                    items.push(item);
+                }
+            }
+        }
+        return items;
     },
     isEquipped: function (item) {
         if (!item.hasMixin(Game.ItemMixins.Equippable)) return false;

@@ -50,3 +50,6 @@ Game.Item.prototype.destroy = function(message) {
     this._destroyed = true;
     this.getMap().removeItem(this);
 };
+Game.Item.prototype.stackableWith = function (other) {
+    return this.describe() == other.describe() && this.details() == other.details();
+}
