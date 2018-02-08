@@ -57,6 +57,11 @@ var Game =  {
     }
 };
 
+// set up some holder objects
+Game.Screen = {};
+Game.EntityMixins = {};
+Game.ItemMixins = {};
+
 window.onload = function() {
     // Check if rot.js can work on this browser
     if (!ROT.isSupported()) {
@@ -113,1094 +118,6 @@ Game.Geometry = {
     }
 };
 
-Game.Screen = {};
-
-// Define our initial start screen
-Game.Screen.startScreen = {
-    enter: function () { console.log("Entered start screen."); },
-    exit: function () { console.log("Exited start screen."); },
-    render: function (display) {
-        // Render our prompt to the screen
-        var title = 'Perpetual Dystopia Vault';
-        var prompt = 'Press [Enter] to start!';
-        var y = 5;
-        display.drawText(Game.getScreenWidth() / 2 - title.length / 2, y++, '%c{yellow}' + title);
-        display.drawText(Game.getScreenWidth() / 2 - prompt.length / 2, y++, prompt);
-    },
-    handleInput: function (inputType, inputData) {
-        // When [Enter] is pressed, go to the play screen
-        if (inputType === 'keydown') {
-            if (inputData.keyCode === ROT.VK_RETURN) {
-                Game.switchScreen(Game.Screen.playScreen);
-            }
-        }
-    }
-};
-
-// Define our playing screen
-Game.Screen.playScreen = {
-    _player: null,
-    _gameEnded: false,
-    _subScreen: null,
-    enter: function () {
-        // Create a map based on our size parameters
-        var width = 100;
-        var height = 48;
-        var depth = 6;
-        // Create our map from the tiles and player
-        this._player = new Game.Entity(Game.PlayerTemplate);
-        //todo debug
-        this._player.addItem(Game.ItemRepository.create('sling'));
-        this._player.addItem(Game.ItemRepository.create('tunic'));
-        var tiles = new Game.Builder(width, height, depth).getTiles();
-        var map = new Game.Map.Cave(tiles, this._player);
-        // Start the map's engine
-        map.getEngine().start();
-    },
-    exit: function () { console.log("Exited play screen."); },
-    render: function (display) {
-        // Render subscreen if there is one
-        if (this._subScreen) {
-            this._subScreen.render(display);
-            return;
-        }
-
-        var screenWidth = Game.getScreenWidth();
-        var screenHeight = Game.getScreenHeight();
-
-        // Render the tiles
-        this.renderTiles(display);
-
-        // Get the messages in the player's queue and render them
-        var messages = this._player.getMessages();
-        var messageY = 0;
-        for (var i = 0; i < messages.length; i++) {
-            // Draw each message, adding the number of lines
-            messageY += display.drawText(
-                0,
-                messageY,
-                '%c{white}%b{black}' + messages[i]
-            );
-        }
-
-        // Render player stats
-        var stats = '%c{white}%b{black}';
-        stats += vsprintf('HP: %d/%d L: %d XP: %d',
-            [this._player.getHp(), this._player.getMaxHp(),
-            this._player.getLevel(), this._player.getExperience()]);
-        display.drawText(0, screenHeight, stats);
-        // Render hunger state
-        var hungerState = this._player.getHungerState();
-        display.drawText(screenWidth - hungerState.length, screenHeight, hungerState);
-    },
-    getScreenOffsets: function () {
-        // Make sure we still have enough space to fit an entire game screen
-        var topLeftX = Math.max(0, this._player.getX() - (Game.getScreenWidth() / 2));
-        // Make sure we still have enough space to fit an entire game screen
-        topLeftX = Math.min(topLeftX, this._player.getMap().getWidth() -
-            Game.getScreenWidth());
-        // Make sure the y-axis doesn't above the top bound
-        var topLeftY = Math.max(0, this._player.getY() - (Game.getScreenHeight() / 2));
-        // Make sure we still have enough space to fit an entire game screen
-        topLeftY = Math.min(topLeftY, this._player.getMap().getHeight() - Game.getScreenHeight());
-        return {
-            x: topLeftX,
-            y: topLeftY
-        };
-    },
-    renderTiles: function (display) {
-        var screenWidth = Game.getScreenWidth();
-        var screenHeight = Game.getScreenHeight();
-        var offsets = this.getScreenOffsets();
-        var topLeftX = offsets.x;
-        var topLeftY = offsets.y;
-        // This object will keep track of all visible map cells
-        var visibleCells = {};
-        // Store this._player.getMap() and player's z to prevent losing it in callbacks
-        var map = this._player.getMap();
-        var currentDepth = this._player.getZ();
-        // Find all visible cells and update the object		
-        map.getFov(currentDepth).compute(
-            this._player.getX(), this._player.getY(),
-            this._player.getSightRadius(),
-            function (x, y, radius, visibility) {
-                visibleCells[x + "," + y] = true;
-                // Mark cell as explored		
-                map.setExplored(x, y, currentDepth, true);
-            });
-        // Render the explored map cells
-        for (var x = topLeftX; x < topLeftX + screenWidth; x++) {
-            for (var y = topLeftY; y < topLeftY + screenHeight; y++) {
-                if (map.isExplored(x, y, currentDepth)) {
-                    // Fetch the glyph for the tile and render it to the screen
-                    // at the offset position.
-                    var glyph = map.getTile(x, y, currentDepth);
-                    var foreground = glyph.getForeground();
-                    // If we are at a cell that is in the field of vision, we need
-                    // to check if there are items or entities.
-                    if (visibleCells[x + ',' + y]) {
-                        // Check for entities first, since we want to draw entities over items.
-                        var entity = map.getEntityAt(x, y, currentDepth);
-                        if (entity) {
-                            glyph = entity;
-                        } else {
-                            var items = map.getItemsAt(x, y, currentDepth);
-                            // If we have items, we want to render the top most item
-                            if (items) {
-                                glyph = items[items.length - 1];
-                            }
-                        }
-                        // Update the foreground color in case our glyph changed
-                        foreground = glyph.getForeground();
-                    } else {
-                        // Since the tile was previously explored but is not 
-                        // visible, we want to change the foreground color to
-                        // dark gray.
-                        foreground = 'darkGray';
-                    }
-                    display.draw(
-                        x - topLeftX,
-                        y - topLeftY,
-                        glyph.getChar(),
-                        foreground,
-                        glyph.getBackground());
-                }
-            }
-        }
-    },
-    handleInput: function (inputType, inputData) {
-        // If the game is over, enter will bring the user to the losing screen.
-        if (this._gameEnded) {
-            if (inputType === 'keydown' && inputData.keyCode === ROT.VK_RETURN) {
-                Game.switchScreen(Game.Screen.loseScreen);
-            }
-            // Return to make sure the user can't still play
-            return;
-        }
-        // Handle subscreen input if there is one
-        if (this._subScreen) {
-            this._subScreen.handleInput(inputType, inputData);
-            return;
-        }
-        if (inputType === 'keydown') {
-            // Movement
-            if (inputData.keyCode === ROT.VK_LEFT) {
-                this.move(-1, 0, 0);
-            } else if (inputData.keyCode === ROT.VK_RIGHT) {
-                this.move(1, 0, 0);
-            } else if (inputData.keyCode === ROT.VK_UP) {
-                this.move(0, -1, 0);
-            } else if (inputData.keyCode === ROT.VK_DOWN) {
-                this.move(0, 1, 0);
-            } else if (inputData.keyCode === ROT.VK_I) {
-                // Show the inventory screen
-                this.showItemsSubScreen(Game.Screen.inventoryScreen, this._player.getItems(),
-                    'You are not carrying anything.');
-                return;
-            } else if (inputData.keyCode === ROT.VK_D) {
-                // Show the drop screen
-                this.showItemsSubScreen(Game.Screen.dropScreen, this._player.getItems(),
-                    'You have nothing to drop.');
-                return;
-            } else if (inputData.keyCode === ROT.VK_E) {
-                // Show the drop screen
-                this.showItemsSubScreen(Game.Screen.eatScreen, this._player.getItems(),
-                    'You have nothing to eat.');
-                return;
-            } else if (inputData.keyCode === ROT.VK_W) {
-                // Show the wear/wield screen
-                this.showItemsSubScreen(Game.Screen.equipScreen, this._player.getItems(),
-                    'You have nothing to wear or wield.');
-                return;
-            } else if (inputData.keyCode === ROT.VK_T) {
-                // Show the equipment screen
-                this.showItemsSubScreen(Game.Screen.unequipScreen, this._player.getEquippedItems(),
-                    'You have nothing equipped.');
-                return;
-            } else if (inputData.keyCode === ROT.VK_X) {
-                // Show the drop screen
-                this.showItemsSubScreen(Game.Screen.examineScreen, this._player.getItems(),
-                    'You have nothing to examine.');
-                return;
-            } else if (inputData.keyCode === ROT.VK_L) {
-                // Setup the look screen.
-                var offsets = this.getScreenOffsets();
-                Game.Screen.lookScreen.setup(this._player,
-                    this._player.getX(), this._player.getY(),
-                    offsets.x, offsets.y);
-                this.setSubScreen(Game.Screen.lookScreen);
-                return;
-            } else if (inputData.keyCode === ROT.VK_F) {
-                // Setup the fire screen.
-                var weapons = this._player.getWeapons(Game.ItemMixins.Ranged);
-                if (weapons.length == 0) {
-                    Game.sendMessage(this._player, "You do not have a ranged weapon equipped.");
-                } else {
-                    var offsets = this.getScreenOffsets();
-                    Game.Screen.rangedAttackScreen.setup(this._player,
-                        this._player.getX(), this._player.getY(),
-                        offsets.x, offsets.y);
-                    this.setSubScreen(Game.Screen.rangedAttackScreen);
-                    return;
-                }
-            } else if (inputData.keyCode === ROT.VK_G) {
-                var items = this._player.getMap().getItemsAt(this._player.getX(),
-                    this._player.getY(), this._player.getZ());
-                // If there is only one item, directly pick it up
-                if (items && items.length === 1) {
-                    var item = items[0];
-                    if (this._player.addItem(item)) {
-                        Game.sendMessage(this._player, "You pick up %s.", [item.describeA()]);
-                        this._player.getMap().setItemsAt(this._player.getX(), this._player.getY(), this._player.getZ(), []);
-                    } else {
-                        Game.sendMessage(this._player, "Your inventory is full! Nothing was picked up.");
-                    }
-                } else {
-                    this.showItemsSubScreen(Game.Screen.pickupScreen, items,
-                        'There is nothing here to pick up.');
-                }
-            } else if (inputData.keyCode === ROT.VK_B) {
-                // Setup the butcher screen
-                var items = this._player.getMap().getItemsAt(this._player.getPosition());
-
-                if (items) {
-                    var target = undefined;
-                    for (let i = 0; i < items.length; i++) {
-                        const item = items[i];
-                        if (item.hasMixin(Game.ItemMixins.Butcherable)) {
-                            target = item;
-                            break;
-                        }
-                    }
-                    if (target) {
-                        var count = Game.Screen.butcherScreen.setup(this._player, target.getItems(), {
-                            butcherable: target
-                        });
-                        if (count > 0) {
-                            this.setSubScreen(Game.Screen.butcherScreen);
-                        } else {
-                            Game.sendMessage(this._player, "%s has been stripped bare, there is nothing left to take!", [target.describeThe(true)]);
-                            Game.refresh();
-                            return;
-                        }
-                    }
-                    return;
-                }
-
-            } else if (inputData.keyCode === ROT.VK_R) {
-                // Rest
-                Game.Screen.restScreen.setup();
-                this.setSubScreen(Game.Screen.restScreen);
-                return;
-            } else {
-                // Not a valid key
-                return;
-            }
-            // Unlock the engine
-            this._player.getMap().getEngine().unlock();
-        } else if (inputType === 'keypress') {
-            var keyChar = String.fromCharCode(inputData.charCode);
-            if (keyChar === '>') {
-                this.move(0, 0, 1);
-            } else if (keyChar === '<') {
-                this.move(0, 0, -1);
-            } else if (keyChar === '?') {
-                // Setup the look screen.
-                this.setSubScreen(Game.Screen.helpScreen);
-                return;
-            } else {
-                // Not a valid key
-                return;
-            }
-            // Unlock the engine
-            this._player.getMap().getEngine().unlock();
-        }
-    },
-    move: function (dX, dY, dZ) {
-        var newX = this._player.getX() + dX;
-        var newY = this._player.getY() + dY;
-        var newZ = this._player.getZ() + dZ;
-        // Try to move to the new cell
-        this._player.tryMove(newX, newY, newZ, this._player.getMap());
-    },
-    setGameEnded: function (gameEnded) {
-        this._gameEnded = gameEnded;
-    },
-    setSubScreen: function (subScreen) {
-        this._subScreen = subScreen;
-        // Refresh screen on changing the subscreen
-        Game.refresh();
-    },
-    showItemsSubScreen: function (subScreen, items, emptyMessage) {
-        if (items && subScreen.setup(this._player, items) > 0) {
-            this.setSubScreen(subScreen);
-        } else {
-            Game.sendMessage(this._player, emptyMessage);
-            Game.refresh();
-        }
-    }
-};
-
-// Define our winning screen
-Game.Screen.winScreen = {
-    enter: function () { console.log("Entered win screen."); },
-    exit: function () { console.log("Exited win screen."); },
-    render: function (display) {
-        // Render our prompt to the screen
-        for (var i = 0; i < 22; i++) {
-            // Generate random background colors
-            var r = Math.round(Math.random() * 255);
-            var g = Math.round(Math.random() * 255);
-            var b = Math.round(Math.random() * 255);
-            var background = ROT.Color.toRGB([r, g, b]);
-            display.drawText(2, i + 1, "%b{" + background + "}You win!");
-        }
-    },
-    handleInput: function (inputType, inputData) {
-        // Nothing to do here      
-    }
-};
-
-// Define our winning screen
-Game.Screen.loseScreen = {
-    enter: function () { console.log("Entered lose screen."); },
-    exit: function () { console.log("Exited lose screen."); },
-    render: function (display) {
-        // Render our prompt to the screen
-        for (var i = 0; i < 22; i++) {
-            display.drawText(2, i + 1, "%b{red}You lose! :(");
-        }
-    },
-    handleInput: function (inputType, inputData) {
-        // Nothing to do here      
-    }
-};
-
-Game.Screen.ItemListScreen = function (template) {
-    // Set up based on the template
-    this._caption = template['caption'];
-    this._okFunction = template['ok'];
-    // By default, we use the identity function
-    this._isAcceptableFunction = template['isAcceptable'] || (x => x);
-    // Whether the user can select items at all.
-    this._canSelectItem = template['canSelect'];
-    // Whether the user can select multiple items.
-    this._canSelectMultipleItems = template['canSelectMultipleItems'];
-    // Whether a 'no item' option should appear.
-    this._hasNoItemOption = template['hasNoItemOption'];
-};
-
-Game.Screen.ItemListScreen.prototype.setup = function (player, items, extra) {
-    this._player = player;
-    this._map = player.getMap();
-    // Should be called before switching to the screen.
-    var count = 0;
-    // Iterate over each item, keeping only the acceptable ones and counting
-    // the number of acceptable items.
-    var that = this;
-    this._items = items.map(function (item, index) {
-        // Transform the item into null if it's not acceptable
-        if (that._isAcceptableFunction(item)) {
-            count++;
-            return item;
-        } else {
-            return null;
-        }
-    });
-
-    // 2d jagged array
-    this._groupedItems = [];
-    this._items.forEach(item => {
-        // blank item, ignore
-        if (!item) return;
-
-        for (let i = 0; i < that._groupedItems.length; i++) {
-            const savedItem = that._groupedItems[i];
-            if (item.stackableWith(that._groupedItems[i][0])) {
-                that._groupedItems[i].push(item);
-                return;
-            }
-        }
-
-        // else
-        that._groupedItems.push([item]);
-    });
-
-    // Clean set of selected indices
-    this._selectedIndices = {};
-
-    //Copy over extra properties
-    for (var key in extra) {
-        this[key] = extra[key];
-    }
-    return count;
-};
-
-Game.Screen.ItemListScreen.prototype.render = function (display) {
-    var letters = 'abcdefghijklmnopqrstuvwxyz';
-    // Render the caption in the top row
-    display.drawText(0, 0, this._caption);
-    // Render the no item row if enabled
-    if (this._hasNoItemOption) {
-        display.drawText(0, 1, '0 - no item');
-    }
-
-    var row = 0;
-    for (var i = 0; i < this._groupedItems.length; i++) {
-        // Get the letter matching the item's index
-        var letter = letters.substring(i, i + 1);
-        // If we have selected an item, show a +, else show a dash between
-        // the letter and the item's name.
-        var selectionState = (this._canSelectItem && this._canSelectMultipleItems &&
-            this._selectedIndices[i]) ? '+' : '-';
-
-        // if the item is a group, show the count
-        var prefix = '';
-        if (this._groupedItems[i].length > 1) {
-            prefix = this._groupedItems[i].length + ' ';
-        }
-
-        // Render at the correct row and add 2.
-        display.drawText(0, 2 + row, vsprintf('%s %s %s', [letter, selectionState, prefix + this._groupedItems[i][0].describe(false, this._groupedItems[i].length > 1)]));
-        row++;
-    }
-};
-
-Game.Screen.ItemListScreen.prototype.executeOkFunction = function () {
-    // Gather the selected and not selected items.
-    var selectedGroups = {};
-    var unSelectedGroups = {};
-    for (const key in this._groupedItems) {
-        if (!this._groupedItems.hasOwnProperty(key) || !this._groupedItems[key]) continue;
-        if (this._selectedIndices[key]) {
-            selectedGroups[key] = this._groupedItems[key];
-        } else {
-            unSelectedGroups[key] = this._groupedItems[key];
-        }
-    }
-    // Switch back to the play screen.
-    Game.Screen.playScreen.setSubScreen(undefined);
-    // Call the OK function and end the player's turn if it return true.
-    if (this._okFunction(selectedGroups, unSelectedGroups)) {
-        this._player.getMap().getEngine().unlock();
-    }
-};
-Game.Screen.ItemListScreen.prototype.handleInput = function (inputType, inputData) {
-    if (inputType === 'keydown') {
-        // If the user hit escape, hit enter and can't select an item, or hit
-        // enter without any items selected, simply cancel out
-        if (inputData.keyCode === ROT.VK_ESCAPE ||
-            (inputData.keyCode === ROT.VK_RETURN && !this._canSelectItem)) {
-            Game.Screen.playScreen.setSubScreen(undefined);
-            // Handle pressing return when items are selected
-        } else if (inputData.keyCode === ROT.VK_RETURN) {
-            this.executeOkFunction();
-            // Handle pressing zero when 'no item' selection is enabled
-        } else if (this._canSelectItem && this._hasNoItemOption && inputData.keyCode === ROT.VK_0) {
-            this._selectedIndices = {};
-            this.executeOkFunction();
-            // Handle pressing a letter if we can select
-        } else if (this._canSelectItem && inputData.keyCode >= ROT.VK_A &&
-            inputData.keyCode <= ROT.VK_Z) {
-            // Check if it maps to a valid item by subtracting 'a' from the character
-            // to know what letter of the alphabet we used.
-            var index = inputData.keyCode - ROT.VK_A;
-            if (this._groupedItems[index]) {
-                // If multiple selection is allowed, toggle the selection status, else
-                // select the item and exit the screen
-                if (this._canSelectMultipleItems) {
-                    if (this._selectedIndices[index]) {
-                        delete this._selectedIndices[index];
-                    } else {
-                        this._selectedIndices[index] = true;
-                    }
-                    // Redraw screen
-                    Game.refresh();
-                } else {
-                    this._selectedIndices[index] = true;
-                    this.executeOkFunction();
-                }
-            }
-        }
-    }
-};
-
-Game.Screen.inventoryScreen = new Game.Screen.ItemListScreen({
-    caption: 'Inventory',
-    canSelect: false
-});
-
-Game.Screen.pickupScreen = new Game.Screen.ItemListScreen({
-    caption: 'Choose the items you wish to pickup',
-    canSelect: true,
-    canSelectMultipleItems: true,
-    ok: function (selectedGroups, unSelectedGroups) {
-        //try add all, if can't add, put back on ground
-        var remaining = [];
-        for (const groupKey in selectedGroups) {
-            if (selectedGroups.hasOwnProperty(groupKey)) {
-                const group = selectedGroups[groupKey];
-                group.forEach(item => {
-                    if (!this._player.addItem(item)) {
-                        remaining.push(item);
-                    }
-                });
-            }
-        }
-
-        if (remaining.length > 0) {
-            Game.sendMessage(this._player, "Your inventory is full! Not all items were picked up.");
-        }
-
-        // add back the unselected items
-        for (const groupKey in unSelectedGroups) {
-            if (unSelectedGroups.hasOwnProperty(groupKey)) {
-                const group = unSelectedGroups[groupKey];
-                group.forEach(item => {
-                    remaining.push(item);
-                });
-            }
-        }
-
-        // put the remaining back down
-        this._map.setItemsAt(this._player.getX(), this._player.getY(), this._player.getZ(), remaining);
-        return true;
-    }
-});
-
-Game.Screen.dropScreen = new Game.Screen.ItemListScreen({
-    caption: 'Choose the item you wish to drop',
-    canSelect: true,
-    canSelectMultipleItems: false,
-    ok: function (selectedGroups) {
-        // Drop the selected item
-        var items = selectedGroups[Object.keys(selectedGroups)[0]];
-        for (let i = 0; i < items.length; i++) {
-            const item = items[i];
-            this._player.removeItem(item);
-            this._map.addItem(this._player.getX(), this._player.getY(), this._player.getZ(), item);
-        }
-        return true;
-    }
-});
-
-Game.Screen.eatScreen = new Game.Screen.ItemListScreen({
-    caption: 'Choose the item you wish to eat',
-    canSelect: true,
-    canSelectMultipleItems: false,
-    isAcceptable: function (item) {
-        return item && item.hasMixin('Edible');
-    },
-    ok: function (selectedGroups) {
-        // Eat the item, removing it if there are no consumptions remaining.
-        var group = selectedGroups[Object.keys(selectedGroups)[0]];
-        var item = group[0];
-        Game.sendMessage(this._player, "You eat %s.", [item.describeThe()]);
-        item.eat(this._player);
-        if (!item.hasRemainingConsumptions()) {
-            this._player.removeItem(item);
-        }
-        return true;
-    }
-});
-
-// todo you can currently wear/wield multiple items,
-// if they fit in the same slots the last one will end up equipped
-Game.Screen.equipScreen = new Game.Screen.ItemListScreen({
-    caption: 'Choose the item you wish to equip',
-    canSelect: true,
-    canSelectMultipleItems: true,
-    isAcceptable: function (item) {
-        return item && item.hasMixin('Equippable');
-    },
-    ok: function (selectedGroups, unSelectedGroups) {
-        for (const key in selectedGroups) {
-            const group = selectedGroups[key];
-            const item = group[0];
-            if (!this._player.isEquipped(item)) {
-                this._player.equip(item);
-                this._player.removeItem(item);
-                Game.sendMessage(this._player, "You equip %s.", [item.describeThe()]);
-            }
-        }
-        return true;
-    }
-});
-
-Game.Screen.unequipScreen = new Game.Screen.ItemListScreen({
-    caption: 'Choose the item you wish to unequip',
-    canSelect: true,
-    canSelectMultipleItems: true,
-    ok: function (selectedGroups, unSelectedGroups) {
-        for (const key in selectedGroups) {
-            const group = selectedGroups[key];
-            const item = group[0];
-            if (this._player.isEquipped(item)) {
-                this._player.addItem(item);
-                this._player.unequip(item);
-                Game.sendMessage(this._player, "You put away %s.", [item.describeThe()]);
-            }
-        }
-        return true;
-    }
-});
-
-Game.Screen.examineScreen = new Game.Screen.ItemListScreen({
-    caption: 'Choose the item you wish to examine',
-    canSelect: true,
-    canSelectMultipleItems: false,
-    isAcceptable: function (item) {
-        return true;
-    },
-    ok: function (selectedGroups) {
-        var keys = Object.keys(selectedGroups);
-        if (keys.length > 0) {
-            var group = selectedGroups[keys[0]];
-            item = group[0];
-            if (group.length == 1) {
-                Game.sendMessage(this._player, "It's %s (%s).",
-                [
-                    item.describeA(false),
-                    item.details()
-                ]);
-            } else if (group.length > 1) {
-                Game.sendMessage(this._player, "It's %s %s (%s).",
-                [
-                    group.length,
-                    item.describe(false, true),
-                    item.details()
-                ]); 
-            }
-        }
-        return true;
-    }
-});
-
-Game.Screen.butcherScreen = new Game.Screen.ItemListScreen({
-    caption: 'What do you want to butcher?',
-    canSelect: true,
-    canSelectMultipleItems: true,
-    ok: function (selectedGroups) {
-        var keys = Object.keys(selectedGroups);
-        if (!this._player.canAddItems(keys.length)) {
-            Game.sendMessage(this._player, "You cannot hold that many items!");
-        }
-        var player = this._player;
-        var butcherable = this.butcherable;
-        //todo variable time for butchering
-        Game.Screen.waitScreen.setup({
-            turnsToWait: keys.length * 5,
-            action: 'Butchering',
-            onComplete: function () {
-                var remaining = [];
-                for (let i = 0; i < keys.length; i++) {
-                    const group = selectedGroups[keys[i]];
-                    var count = 0;
-                    group.forEach(item => {
-                        if (!butcherable.removeItem(item)) {
-                            console.log('failed to remove item when butchering');
-                        }
-                        if (player.addItem(item)) {
-                            count++;
-                        } else {
-                            remaining.push(item);
-                        }
-                    });
-                    if (count == 1) {
-                        Game.sendMessage(player, "You pick up %s.", [group[0].describeA()]);
-                    } else if (count > 1) {
-                        Game.sendMessage(player, "You pick up %s %s.", [count, group[0].describe(false, true)]);
-                    }
-                }
-                if (remaining.length > 0) {
-                    Game.sendMessage(player, "Your inventory is full! Some items have been dropped");
-                    player.getMap().setItemsAt(player.getX(), player.getY(), player.getZ(), remaining);
-                }
-            }
-        });
-        Game.Screen.playScreen.setSubScreen(Game.Screen.waitScreen);
-        return true;
-    }
-});
-
-Game.Screen.gainStatScreen = {
-    setup: function (entity) {
-        // Must be called before rendering.
-        this._entity = entity;
-        this._options = entity.getStatOptions();
-    },
-    render: function (display) {
-        var letters = 'abcdefghijklmnopqrstuvwxyz';
-        display.drawText(0, 0, 'Choose a stat to increase: ');
-
-        // Iterate through each of our options
-        for (var i = 0; i < this._options.length; i++) {
-            display.drawText(0, 2 + i,
-                letters.substring(i, i + 1) + ' - ' + this._options[i][0]);
-        }
-
-        // Render remaining stat points
-        display.drawText(0, 4 + this._options.length,
-            "Remaining points: " + this._entity.getStatPoints());
-    },
-    handleInput: function (inputType, inputData) {
-        if (inputType === 'keydown') {
-            // If a letter was pressed, check if it matches to a valid option.
-            if (inputData.keyCode >= ROT.VK_A && inputData.keyCode <= ROT.VK_Z) {
-                // Check if it maps to a valid item by subtracting 'a' from the character
-                // to know what letter of the alphabet we used.
-                var index = inputData.keyCode - ROT.VK_A;
-                if (this._options[index]) {
-                    // Call the stat increasing function
-                    this._options[index][1].call(this._entity);
-                    // Decrease stat points
-                    this._entity.setStatPoints(this._entity.getStatPoints() - 1);
-                    // If we have no stat points left, exit the screen, else refresh
-                    if (this._entity.getStatPoints() == 0) {
-                        Game.Screen.playScreen.setSubScreen(undefined);
-                    } else {
-                        Game.refresh();
-                    }
-                }
-            }
-        }
-    }
-};
-
-
-Game.Screen.TargetBasedScreen = function (template) {
-    template = template || {};
-    // By default, our ok return does nothing and does not consume a turn.
-    this._okFunction = template['okFunction'] || function (x, y) {
-        return false;
-    };
-    // The defaut caption function simply returns an empty string.
-    this._captionFunction = template['captionFunction'] || function (x, y) {
-        return '';
-    }
-};
-
-Game.Screen.TargetBasedScreen.prototype.setup = function (player, startX, startY, offsetX, offsetY) {
-    this._player = player;
-    // Store original position. Subtract the offset to make life easy so we don't
-    // always have to remove it.
-    this._startX = startX - offsetX;
-    this._startY = startY - offsetY;
-    // Store current cursor position
-    this._cursorX = this._startX;
-    this._cursorY = this._startY;
-    // Store map offsets
-    this._offsetX = offsetX;
-    this._offsetY = offsetY;
-    // Cache the FOV
-    var visibleCells = {};
-    this._player.getMap().getFov(this._player.getZ()).compute(
-        this._player.getX(), this._player.getY(),
-        this._player.getSightRadius(),
-        function (x, y, radius, visibility) {
-            visibleCells[x + "," + y] = true;
-        });
-    this._visibleCells = visibleCells;
-};
-
-Game.Screen.TargetBasedScreen.prototype.render = function (display) {
-    var playScreen = Game.Screen.playScreen;
-    playScreen.renderTiles.call(playScreen, display);
-
-    // Draw a line from the start to the cursor.
-    var points = Game.Geometry.getLine(this._startX, this._startY, this._cursorX, this._cursorY);
-
-    var offsets = playScreen.getScreenOffsets();
-    var topLeftX = offsets.x;
-    var topLeftY = offsets.y;
-    var currentDepth = playScreen._player.getZ();
-    var map = playScreen._player.getMap();
-
-    // This object will keep track of all visible map cells
-    var visibleCells = {};
-    // Find all visible cells and update the object
-    map.getFov(currentDepth).compute(
-        this._player.getX(), this._player.getY(),
-        this._player.getSightRadius(),
-        function (x, y, radius, visibility) {
-            visibleCells[x + "," + y] = true;
-        });
-
-    // Render stars along the line.
-    for (var i = 0, l = points.length; i < l; i++) {
-        // Get the underlying glyph
-        var glyph = Game.Glyph.unknown;
-        var mapX = points[i].x + topLeftX;
-        var mapY = points[i].y + topLeftY;
-        if (map.isExplored(mapX, mapY, currentDepth)) {
-            // Fetch the glyph for the tile and render it to the screen
-            // at the offset position.
-            glyph = map.getTile(mapX, mapY, currentDepth);
-            var foreground = glyph.getForeground();
-            // If we are at a cell that is in the field of vision, we need
-            // to check if there are items or entities.
-            if (visibleCells[mapX + ',' + mapY]) {
-                // Check for entities first, since we want to draw entities over items.
-                var entity = map.getEntityAt(mapX, mapY, currentDepth);
-                if (entity) {
-                    glyph = entity;
-                } else {
-                    var items = map.getItemsAt(mapX, mapY, currentDepth);
-                    // If we have items, we want to render the top most item
-                    if (items) {
-                        glyph = items[items.length - 1];
-                    }
-                }
-                // Update the foreground color in case our glyph changed
-                foreground = glyph.getForeground();
-            }
-        }
-        display.draw(points[i].x, points[i].y, glyph.getChar(), 'white', 'darkgreen');
-    }
-
-    // Render the caption at the bottom.
-    display.drawText(0, Game.getScreenHeight() - 1,
-        this._captionFunction(this._cursorX + this._offsetX, this._cursorY + this._offsetY));
-};
-
-Game.Screen.TargetBasedScreen.prototype.handleInput = function (inputType, inputData) {
-    // Move the cursor
-    var refresh = true;
-    if (inputType == 'keydown') {
-        if (inputData.keyCode === ROT.VK_LEFT) {
-            this.moveCursor(-1, 0);
-        } else if (inputData.keyCode === ROT.VK_RIGHT) {
-            this.moveCursor(1, 0);
-        } else if (inputData.keyCode === ROT.VK_UP) {
-            this.moveCursor(0, -1);
-        } else if (inputData.keyCode === ROT.VK_DOWN) {
-            this.moveCursor(0, 1);
-        } else if (inputData.keyCode === ROT.VK_ESCAPE) {
-            Game.Screen.playScreen.setSubScreen(undefined);
-        } else if (inputData.keyCode === ROT.VK_RETURN) {
-            this.executeOkFunction();
-            refresh = false;
-        }
-    }
-    if (refresh) Game.refresh();
-};
-
-Game.Screen.TargetBasedScreen.prototype.moveCursor = function (dx, dy) {
-    // Make sure we stay within bounds.
-    this._cursorX = Math.max(0, Math.min(this._cursorX + dx, Game.getScreenWidth()));
-    // We have to save the last line for the caption.
-    this._cursorY = Math.max(0, Math.min(this._cursorY + dy, Game.getScreenHeight() - 1));
-};
-
-Game.Screen.TargetBasedScreen.prototype.executeOkFunction = function () {
-    // Switch back to the play screen.
-    Game.Screen.playScreen.setSubScreen(undefined);
-    // Call the OK function and end the player's turn if it return true.
-    if (this._okFunction(this._cursorX + this._offsetX, this._cursorY + this._offsetY)) {
-        this._player.getMap().getEngine().unlock();
-    }
-};
-
-Game.Screen.lookScreen = new Game.Screen.TargetBasedScreen({
-    captionFunction: function (x, y) {
-        var z = this._player.getZ();
-        var map = this._player.getMap();
-        // If the tile is explored, we can give a better capton
-        if (map.isExplored(x, y, z)) {
-            // If the tile isn't explored, we have to check if we can actually 
-            // see it before testing if there's an entity or item.
-            if (this._visibleCells[x + ',' + y]) {
-                var items = map.getItemsAt(x, y, z);
-                // If we have items, we want to render the top most item
-                // TODO option to see more
-                if (items) {
-                    var item = items[items.length - 1];
-                    return String.format('%s - %s (%s)',
-                        item.getRepresentation(),
-                        item.describeA(true),
-                        item.details());
-                    // Else check if there's an entity
-                } else if (map.getEntityAt(x, y, z)) {
-                    var entity = map.getEntityAt(x, y, z);
-                    return String.format('%s - %s (%s)',
-                        entity.getRepresentation(),
-                        entity.describeA(true),
-                        entity.details());
-                }
-            }
-            // If there was no entity/item or the tile wasn't visible, then use
-            // the tile information.
-            return String.format('%s - %s',
-                map.getTile(x, y, z).getRepresentation(),
-                map.getTile(x, y, z).getDescription());
-
-        } else {
-            // If the tile is not explored, show the null tile description.
-            return String.format('%s - %s',
-                Game.Tile.nullTile.getRepresentation(),
-                Game.Tile.nullTile.getDescription());
-        }
-    }
-});
-
-Game.Screen.rangedAttackScreen = new Game.Screen.TargetBasedScreen({
-    captionFunction: function (x, y) {
-        var z = this._player.getZ();
-        var map = this._player.getMap();
-        // If the tile is explored, we can give a better capton
-        if (map.isExplored(x, y, z)) {
-            // If the tile isn't explored, we have to check if we can actually 
-            // see it before testing if there's an entity or item.
-            if (this._visibleCells[x + ',' + y]) {
-                var entity = map.getEntityAt(x, y, z);
-                if (entity && entity.hasMixin(Game.EntityMixins.Destructible)) {
-                    return String.format('%s - hp: %s, defense: %s',
-                        entity.describeA(true),
-                        entity.getHp(),
-                        entity.getDefenseValue());
-                } else {
-                    // If the tile is not explored, show the null tile description.
-                    return 'There is nothing to fire at there';
-                }
-            }
-        }
-
-        return 'You cannot see there';
-    },
-    okFunction: function (x, y) {
-        var z = this._player.getZ();
-        var map = this._player.getMap();
-        var entity = map.getEntityAt(x, y, z);
-        if (entity) {
-            this._player.rangedAttack(entity);
-        } else {
-            // todo put an ammunition here
-        }
-        return true;
-    }
-});
-
-Game.Screen.restScreen = {
-    setup: function () {
-        this._inputString = '';
-    },
-    render: function (display) {
-        var playScreen = Game.Screen.playScreen;
-        playScreen.renderTiles.call(playScreen, display);
-        display.drawText(0, Game.getScreenHeight() - 1, 'Turns to rest: ' + this._inputString);
-    },
-    handleInput: function (inputType, inputData) {
-        // input wait time
-        if (inputType == 'keydown') {
-            if (inputData.keyCode === ROT.VK_RETURN) {
-                var num = parseInt(this._inputString, 10);
-                if (isNaN(num)) {
-                    //bad number
-                } else {
-                    Game.Screen.playScreen._player.setBusy(true);
-                    Game.Screen.waitScreen.setup({ turnsToWait: num, action: 'Resting' });
-                    Game.Screen.playScreen.setSubScreen(Game.Screen.waitScreen);
-                }
-            } else if (inputData.keyCode === ROT.VK_BACK_SPACE) {
-                this._inputString = this._inputString.slice(0, -1)
-            }
-        } else if (inputType == 'keypress') {
-            var keyChar = String.fromCharCode(inputData.charCode);
-            if (!isNaN(parseInt(keyChar))) {
-                this._inputString += keyChar;
-            }
-        }
-        Game.refresh();
-    }
-};
-
-Game.Screen.waitScreen = {
-    setup: function (template) {
-        this._turnsToWait = template['turnsToWait'] || 0;
-        this._action = template['action'] || 'Waiting';
-        this._onComplete = template['onComplete'] || function () { };
-        this._exiting = false;
-        this._cancel = false;
-    },
-    render: function (display) {
-        var playScreen = Game.Screen.playScreen;
-        playScreen.renderTiles.call(playScreen, display);
-
-        //Check for seen attackers
-        // todo replace with check for hostiles
-        var seenEnemies = playScreen._player.seenEntitiesWith(Game.EntityMixins.Attacker);
-
-        var alerts = playScreen._player.getAlerts();
-
-        display.drawText(0, Game.getScreenHeight() - 1, vsprintf('%s for %s turns...', [this._action, this._turnsToWait]));
-
-        // Escape from screen
-        if (seenEnemies.length > 0) {
-            this._exiting = true;
-            Game.sendMessage(playScreen._player, '%s interrupted by %s!', [this._action, seenEnemies[0].describeA()]);
-        }
-        if (alerts.length > 0) {
-            this._exiting = true;
-            Game.sendMessage(playScreen._player, '%s interrupted because %s!', [this._action, alerts.join(', ')]);
-        }
-        if (this._cancel) {
-            this._exiting = true;
-            Game.sendMessage(playScreen._player, '%s canceled', [this._action]);
-        }
-        if (this._turnsToWait <= 0) {
-            this._exiting = true;
-            this._onComplete();
-        }
-        if (this._exiting) {
-            Game.Screen.playScreen.setSubScreen(null);
-        }
-        else {
-            // delay unlocking to slow down the speed
-            setTimeout(() => {
-                this._turnsToWait--;
-
-                if (!this._exiting) playScreen._player.getMap().getEngine().unlock();
-            }, 100);
-        }
-    },
-    handleInput: function (inputType, inputData) {
-        //cancel
-        if (inputType == 'keydown') {
-            this._cancel = true;
-        }
-        return;
-    }
-};
-
-// Define our help screen
-Game.Screen.helpScreen = {
-    render: function (display) {
-        var text = 'Help';
-        var border = '-------------';
-        var y = 1;
-        display.drawText(Game.getScreenWidth() / 2 - text.length / 2, y++, text);
-        display.drawText(Game.getScreenWidth() / 2 - border.length / 2, y++, border);
-        y += 2;
-        display.drawText(3, y++, '[g] to get items');
-        display.drawText(3, y++, '[d] to drop items');
-        display.drawText(3, y++, '[e] to eat items');
-        display.drawText(3, y++, '[i] to show inventory');
-        display.drawText(3, y++, '[f] to fire a ranged weapon');
-        display.drawText(3, y++, '[b] to butcher a corpse');
-        display.drawText(3, y++, '[w] to wear or wield items');
-        display.drawText(3, y++, '[t] to take off items');
-        display.drawText(3, y++, '[x] to examine items');
-        display.drawText(3, y++, '[l] to look around you');
-        display.drawText(3, y++, '[r] to rest for a time');
-        display.drawText(3, y++, '[?] to show this help screen');
-        y += 3;
-        text = '--- press any key to continue ---';
-        display.drawText(Game.getScreenWidth() / 2 - text.length / 2, y++, text);
-    },
-    handleInput: function (inputType, inputData) {
-        Game.Screen.playScreen.setSubScreen(null);
-    }
-};
 Game.Builder = function(width, height, depth) {
     this._width = width;
     this._height = height;
@@ -1717,6 +634,1080 @@ Game.Map.prototype.addItemAtRandomPosition = function (item, z) {
 Game.Map.prototype.getPlayer = function () {
     return this._player;
 };
+Game.ItemSlots = {
+    Head: 'head',
+    Chest: 'chest',
+    //Legs: 'legs',
+    MainHand: 'main hand',
+    //OffHand: 'off hand',
+};
+
+Game.AmmunitionTypes = {
+    Shot: 'shot',
+    Arrow: 'arrow',
+};
+Game.Screen.gainStatScreen = {
+    setup: function (entity) {
+        // Must be called before rendering.
+        this._entity = entity;
+        this._options = entity.getStatOptions();
+    },
+    render: function (display) {
+        var letters = 'abcdefghijklmnopqrstuvwxyz';
+        display.drawText(0, 0, 'Choose a stat to increase: ');
+
+        // Iterate through each of our options
+        for (var i = 0; i < this._options.length; i++) {
+            display.drawText(0, 2 + i,
+                letters.substring(i, i + 1) + ' - ' + this._options[i][0]);
+        }
+
+        // Render remaining stat points
+        display.drawText(0, 4 + this._options.length,
+            "Remaining points: " + this._entity.getStatPoints());
+    },
+    handleInput: function (inputType, inputData) {
+        if (inputType === 'keydown') {
+            // If a letter was pressed, check if it matches to a valid option.
+            if (inputData.keyCode >= ROT.VK_A && inputData.keyCode <= ROT.VK_Z) {
+                // Check if it maps to a valid item by subtracting 'a' from the character
+                // to know what letter of the alphabet we used.
+                var index = inputData.keyCode - ROT.VK_A;
+                if (this._options[index]) {
+                    // Call the stat increasing function
+                    this._options[index][1].call(this._entity);
+                    // Decrease stat points
+                    this._entity.setStatPoints(this._entity.getStatPoints() - 1);
+                    // If we have no stat points left, exit the screen, else refresh
+                    if (this._entity.getStatPoints() == 0) {
+                        Game.Screen.playScreen.setSubScreen(undefined);
+                    } else {
+                        Game.refresh();
+                    }
+                }
+            }
+        }
+    }
+};
+Game.Screen.helpScreen = {
+    render: function (display) {
+        var text = 'Help';
+        var border = '-------------';
+        var y = 1;
+        display.drawText(Game.getScreenWidth() / 2 - text.length / 2, y++, text);
+        display.drawText(Game.getScreenWidth() / 2 - border.length / 2, y++, border);
+        y += 2;
+        display.drawText(3, y++, '[g] to get items');
+        display.drawText(3, y++, '[d] to drop items');
+        display.drawText(3, y++, '[e] to eat items');
+        display.drawText(3, y++, '[i] to show inventory');
+        display.drawText(3, y++, '[f] to fire a ranged weapon');
+        display.drawText(3, y++, '[b] to butcher a corpse');
+        display.drawText(3, y++, '[w] to wear or wield items');
+        display.drawText(3, y++, '[t] to take off items');
+        display.drawText(3, y++, '[x] to examine items');
+        display.drawText(3, y++, '[l] to look around you');
+        display.drawText(3, y++, '[r] to rest for a time');
+        display.drawText(3, y++, '[?] to show this help screen');
+        y += 3;
+        text = '--- press any key to continue ---';
+        display.drawText(Game.getScreenWidth() / 2 - text.length / 2, y++, text);
+    },
+    handleInput: function (inputType, inputData) {
+        Game.Screen.playScreen.setSubScreen(null);
+    }
+};
+Game.Screen.ItemListScreen = function (template) {
+    // Set up based on the template
+    this._caption = template['caption'];
+    this._okFunction = template['ok'];
+    // By default, we use the identity function
+    this._isAcceptableFunction = template['isAcceptable'] || (x => x);
+    // Whether the user can select items at all.
+    this._canSelectItem = template['canSelect'];
+    // Whether the user can select multiple items.
+    this._canSelectMultipleItems = template['canSelectMultipleItems'];
+    // Whether a 'no item' option should appear.
+    this._hasNoItemOption = template['hasNoItemOption'];
+};
+
+Game.Screen.ItemListScreen.prototype.setup = function (player, items, extra) {
+    this._player = player;
+    this._map = player.getMap();
+    // Should be called before switching to the screen.
+    var count = 0;
+    // Iterate over each item, keeping only the acceptable ones and counting
+    // the number of acceptable items.
+    var that = this;
+    this._items = items.map(function (item, index) {
+        // Transform the item into null if it's not acceptable
+        if (that._isAcceptableFunction(item)) {
+            count++;
+            return item;
+        } else {
+            return null;
+        }
+    });
+
+    // 2d jagged array
+    this._groupedItems = [];
+    this._items.forEach(item => {
+        // blank item, ignore
+        if (!item) return;
+
+        for (let i = 0; i < that._groupedItems.length; i++) {
+            const savedItem = that._groupedItems[i];
+            if (item.stackableWith(that._groupedItems[i][0])) {
+                that._groupedItems[i].push(item);
+                return;
+            }
+        }
+
+        // else
+        that._groupedItems.push([item]);
+    });
+
+    // Clean set of selected indices
+    this._selectedIndices = {};
+
+    //Copy over extra properties
+    for (var key in extra) {
+        this[key] = extra[key];
+    }
+    return count;
+};
+
+Game.Screen.ItemListScreen.prototype.render = function (display) {
+    var letters = 'abcdefghijklmnopqrstuvwxyz';
+    // Render the caption in the top row
+    display.drawText(0, 0, this._caption);
+    // Render the no item row if enabled
+    if (this._hasNoItemOption) {
+        display.drawText(0, 1, '0 - no item');
+    }
+
+    var row = 0;
+    for (var i = 0; i < this._groupedItems.length; i++) {
+        // Get the letter matching the item's index
+        var letter = letters.substring(i, i + 1);
+        // If we have selected an item, show a +, else show a dash between
+        // the letter and the item's name.
+        var selectionState = (this._canSelectItem && this._canSelectMultipleItems &&
+            this._selectedIndices[i]) ? '+' : '-';
+
+        // if the item is a group, show the count
+        var prefix = '';
+        if (this._groupedItems[i].length > 1) {
+            prefix = this._groupedItems[i].length + ' ';
+        }
+
+        // Render at the correct row and add 2.
+        display.drawText(0, 2 + row, vsprintf('%s %s %s', [letter, selectionState, prefix + this._groupedItems[i][0].describe(false, this._groupedItems[i].length > 1)]));
+        row++;
+    }
+};
+
+Game.Screen.ItemListScreen.prototype.executeOkFunction = function () {
+    // Gather the selected and not selected items.
+    var selectedGroups = {};
+    var unSelectedGroups = {};
+    for (const key in this._groupedItems) {
+        if (!this._groupedItems.hasOwnProperty(key) || !this._groupedItems[key]) continue;
+        if (this._selectedIndices[key]) {
+            selectedGroups[key] = this._groupedItems[key];
+        } else {
+            unSelectedGroups[key] = this._groupedItems[key];
+        }
+    }
+    // Switch back to the play screen.
+    Game.Screen.playScreen.setSubScreen(undefined);
+    // Call the OK function and end the player's turn if it return true.
+    if (this._okFunction(selectedGroups, unSelectedGroups)) {
+        this._player.getMap().getEngine().unlock();
+    }
+};
+Game.Screen.ItemListScreen.prototype.handleInput = function (inputType, inputData) {
+    if (inputType === 'keydown') {
+        // If the user hit escape, hit enter and can't select an item, or hit
+        // enter without any items selected, simply cancel out
+        if (inputData.keyCode === ROT.VK_ESCAPE ||
+            (inputData.keyCode === ROT.VK_RETURN && !this._canSelectItem)) {
+            Game.Screen.playScreen.setSubScreen(undefined);
+            // Handle pressing return when items are selected
+        } else if (inputData.keyCode === ROT.VK_RETURN) {
+            this.executeOkFunction();
+            // Handle pressing zero when 'no item' selection is enabled
+        } else if (this._canSelectItem && this._hasNoItemOption && inputData.keyCode === ROT.VK_0) {
+            this._selectedIndices = {};
+            this.executeOkFunction();
+            // Handle pressing a letter if we can select
+        } else if (this._canSelectItem && inputData.keyCode >= ROT.VK_A &&
+            inputData.keyCode <= ROT.VK_Z) {
+            // Check if it maps to a valid item by subtracting 'a' from the character
+            // to know what letter of the alphabet we used.
+            var index = inputData.keyCode - ROT.VK_A;
+            if (this._groupedItems[index]) {
+                // If multiple selection is allowed, toggle the selection status, else
+                // select the item and exit the screen
+                if (this._canSelectMultipleItems) {
+                    if (this._selectedIndices[index]) {
+                        delete this._selectedIndices[index];
+                    } else {
+                        this._selectedIndices[index] = true;
+                    }
+                    // Redraw screen
+                    Game.refresh();
+                } else {
+                    this._selectedIndices[index] = true;
+                    this.executeOkFunction();
+                }
+            }
+        }
+    }
+};
+Game.Screen.loseScreen = {
+    enter: function () { console.log("Entered lose screen."); },
+    exit: function () { console.log("Exited lose screen."); },
+    render: function (display) {
+        // Render our prompt to the screen
+        for (var i = 0; i < 22; i++) {
+            display.drawText(2, i + 1, "%b{red}You lose! :(");
+        }
+    },
+    handleInput: function (inputType, inputData) {
+        // Nothing to do here      
+    }
+};
+Game.Screen.playScreen = {
+    _player: null,
+    _gameEnded: false,
+    _subScreen: null,
+    enter: function () {
+        // Create a map based on our size parameters
+        var width = 100;
+        var height = 48;
+        var depth = 6;
+        // Create our map from the tiles and player
+        this._player = new Game.Entity(Game.PlayerTemplate);
+        //todo debug
+        this._player.addItem(Game.ItemRepository.create('sling'));
+        this._player.addItem(Game.ItemRepository.create('tunic'));
+        var tiles = new Game.Builder(width, height, depth).getTiles();
+        var map = new Game.Map.Cave(tiles, this._player);
+        // Start the map's engine
+        map.getEngine().start();
+    },
+    exit: function () { console.log("Exited play screen."); },
+    render: function (display) {
+        // Render subscreen if there is one
+        if (this._subScreen) {
+            this._subScreen.render(display);
+            return;
+        }
+
+        var screenWidth = Game.getScreenWidth();
+        var screenHeight = Game.getScreenHeight();
+
+        // Render the tiles
+        this.renderTiles(display);
+
+        // Get the messages in the player's queue and render them
+        var messages = this._player.getMessages();
+        var messageY = 0;
+        for (var i = 0; i < messages.length; i++) {
+            // Draw each message, adding the number of lines
+            messageY += display.drawText(
+                0,
+                messageY,
+                '%c{white}%b{black}' + messages[i]
+            );
+        }
+
+        // Render player stats
+        var stats = '%c{white}%b{black}';
+        stats += vsprintf('HP: %d/%d L: %d XP: %d',
+            [this._player.getHp(), this._player.getMaxHp(),
+            this._player.getLevel(), this._player.getExperience()]);
+        display.drawText(0, screenHeight, stats);
+        // Render hunger state
+        var hungerState = this._player.getHungerState();
+        display.drawText(screenWidth - hungerState.length, screenHeight, hungerState);
+    },
+    getScreenOffsets: function () {
+        // Make sure we still have enough space to fit an entire game screen
+        var topLeftX = Math.max(0, this._player.getX() - (Game.getScreenWidth() / 2));
+        // Make sure we still have enough space to fit an entire game screen
+        topLeftX = Math.min(topLeftX, this._player.getMap().getWidth() -
+            Game.getScreenWidth());
+        // Make sure the y-axis doesn't above the top bound
+        var topLeftY = Math.max(0, this._player.getY() - (Game.getScreenHeight() / 2));
+        // Make sure we still have enough space to fit an entire game screen
+        topLeftY = Math.min(topLeftY, this._player.getMap().getHeight() - Game.getScreenHeight());
+        return {
+            x: topLeftX,
+            y: topLeftY
+        };
+    },
+    renderTiles: function (display) {
+        var screenWidth = Game.getScreenWidth();
+        var screenHeight = Game.getScreenHeight();
+        var offsets = this.getScreenOffsets();
+        var topLeftX = offsets.x;
+        var topLeftY = offsets.y;
+        // This object will keep track of all visible map cells
+        var visibleCells = {};
+        // Store this._player.getMap() and player's z to prevent losing it in callbacks
+        var map = this._player.getMap();
+        var currentDepth = this._player.getZ();
+        // Find all visible cells and update the object		
+        map.getFov(currentDepth).compute(
+            this._player.getX(), this._player.getY(),
+            this._player.getSightRadius(),
+            function (x, y, radius, visibility) {
+                visibleCells[x + "," + y] = true;
+                // Mark cell as explored		
+                map.setExplored(x, y, currentDepth, true);
+            });
+        // Render the explored map cells
+        for (var x = topLeftX; x < topLeftX + screenWidth; x++) {
+            for (var y = topLeftY; y < topLeftY + screenHeight; y++) {
+                if (map.isExplored(x, y, currentDepth)) {
+                    // Fetch the glyph for the tile and render it to the screen
+                    // at the offset position.
+                    var glyph = map.getTile(x, y, currentDepth);
+                    var foreground = glyph.getForeground();
+                    // If we are at a cell that is in the field of vision, we need
+                    // to check if there are items or entities.
+                    if (visibleCells[x + ',' + y]) {
+                        // Check for entities first, since we want to draw entities over items.
+                        var entity = map.getEntityAt(x, y, currentDepth);
+                        if (entity) {
+                            glyph = entity;
+                        } else {
+                            var items = map.getItemsAt(x, y, currentDepth);
+                            // If we have items, we want to render the top most item
+                            if (items) {
+                                glyph = items[items.length - 1];
+                            }
+                        }
+                        // Update the foreground color in case our glyph changed
+                        foreground = glyph.getForeground();
+                    } else {
+                        // Since the tile was previously explored but is not 
+                        // visible, we want to change the foreground color to
+                        // dark gray.
+                        foreground = 'darkGray';
+                    }
+                    display.draw(
+                        x - topLeftX,
+                        y - topLeftY,
+                        glyph.getChar(),
+                        foreground,
+                        glyph.getBackground());
+                }
+            }
+        }
+    },
+    handleInput: function (inputType, inputData) {
+        // If the game is over, enter will bring the user to the losing screen.
+        if (this._gameEnded) {
+            if (inputType === 'keydown' && inputData.keyCode === ROT.VK_RETURN) {
+                Game.switchScreen(Game.Screen.loseScreen);
+            }
+            // Return to make sure the user can't still play
+            return;
+        }
+        // Handle subscreen input if there is one
+        if (this._subScreen) {
+            this._subScreen.handleInput(inputType, inputData);
+            return;
+        }
+        if (inputType === 'keydown') {
+            // Movement
+            if (inputData.keyCode === ROT.VK_LEFT) {
+                this.move(-1, 0, 0);
+            } else if (inputData.keyCode === ROT.VK_RIGHT) {
+                this.move(1, 0, 0);
+            } else if (inputData.keyCode === ROT.VK_UP) {
+                this.move(0, -1, 0);
+            } else if (inputData.keyCode === ROT.VK_DOWN) {
+                this.move(0, 1, 0);
+            } else if (inputData.keyCode === ROT.VK_I) {
+                // Show the inventory screen
+                this.showItemsSubScreen(Game.Screen.inventoryScreen, this._player.getItems(),
+                    'You are not carrying anything.');
+                return;
+            } else if (inputData.keyCode === ROT.VK_D) {
+                // Show the drop screen
+                this.showItemsSubScreen(Game.Screen.dropScreen, this._player.getItems(),
+                    'You have nothing to drop.');
+                return;
+            } else if (inputData.keyCode === ROT.VK_E) {
+                // Show the drop screen
+                this.showItemsSubScreen(Game.Screen.eatScreen, this._player.getItems(),
+                    'You have nothing to eat.');
+                return;
+            } else if (inputData.keyCode === ROT.VK_W) {
+                // Show the wear/wield screen
+                this.showItemsSubScreen(Game.Screen.equipScreen, this._player.getItems(),
+                    'You have nothing to wear or wield.');
+                return;
+            } else if (inputData.keyCode === ROT.VK_T) {
+                // Show the equipment screen
+                this.showItemsSubScreen(Game.Screen.unequipScreen, this._player.getEquippedItems(),
+                    'You have nothing equipped.');
+                return;
+            } else if (inputData.keyCode === ROT.VK_X) {
+                // Show the drop screen
+                this.showItemsSubScreen(Game.Screen.examineScreen, this._player.getItems(),
+                    'You have nothing to examine.');
+                return;
+            } else if (inputData.keyCode === ROT.VK_L) {
+                // Setup the look screen.
+                var offsets = this.getScreenOffsets();
+                Game.Screen.lookScreen.setup(this._player,
+                    this._player.getX(), this._player.getY(),
+                    offsets.x, offsets.y);
+                this.setSubScreen(Game.Screen.lookScreen);
+                return;
+            } else if (inputData.keyCode === ROT.VK_F) {
+                // Setup the fire screen.
+                var weapons = this._player.getWeapons(Game.ItemMixins.Ranged);
+                if (weapons.length == 0) {
+                    Game.sendMessage(this._player, "You do not have a ranged weapon equipped.");
+                } else {
+                    var offsets = this.getScreenOffsets();
+                    Game.Screen.rangedAttackScreen.setup(this._player,
+                        this._player.getX(), this._player.getY(),
+                        offsets.x, offsets.y);
+                    this.setSubScreen(Game.Screen.rangedAttackScreen);
+                    return;
+                }
+            } else if (inputData.keyCode === ROT.VK_G) {
+                var items = this._player.getMap().getItemsAt(this._player.getX(),
+                    this._player.getY(), this._player.getZ());
+                // If there is only one item, directly pick it up
+                if (items && items.length === 1) {
+                    var item = items[0];
+                    if (this._player.addItem(item)) {
+                        Game.sendMessage(this._player, "You pick up %s.", [item.describeA()]);
+                        this._player.getMap().setItemsAt(this._player.getX(), this._player.getY(), this._player.getZ(), []);
+                    } else {
+                        Game.sendMessage(this._player, "Your inventory is full! Nothing was picked up.");
+                    }
+                } else {
+                    this.showItemsSubScreen(Game.Screen.pickupScreen, items,
+                        'There is nothing here to pick up.');
+                }
+            } else if (inputData.keyCode === ROT.VK_B) {
+                // Setup the butcher screen
+                var items = this._player.getMap().getItemsAt(this._player.getPosition());
+
+                if (items) {
+                    var target = undefined;
+                    for (let i = 0; i < items.length; i++) {
+                        const item = items[i];
+                        if (item.hasMixin(Game.ItemMixins.Butcherable)) {
+                            target = item;
+                            break;
+                        }
+                    }
+                    if (target) {
+                        var count = Game.Screen.butcherScreen.setup(this._player, target.getItems(), {
+                            butcherable: target
+                        });
+                        if (count > 0) {
+                            this.setSubScreen(Game.Screen.butcherScreen);
+                        } else {
+                            Game.sendMessage(this._player, "%s has been stripped bare, there is nothing left to take!", [target.describeThe(true)]);
+                            Game.refresh();
+                            return;
+                        }
+                    }
+                    return;
+                }
+
+            } else if (inputData.keyCode === ROT.VK_R) {
+                // Rest
+                Game.Screen.restScreen.setup();
+                this.setSubScreen(Game.Screen.restScreen);
+                return;
+            } else {
+                // Not a valid key
+                return;
+            }
+            // Unlock the engine
+            this._player.getMap().getEngine().unlock();
+        } else if (inputType === 'keypress') {
+            var keyChar = String.fromCharCode(inputData.charCode);
+            if (keyChar === '>') {
+                this.move(0, 0, 1);
+            } else if (keyChar === '<') {
+                this.move(0, 0, -1);
+            } else if (keyChar === '?') {
+                // Setup the look screen.
+                this.setSubScreen(Game.Screen.helpScreen);
+                return;
+            } else {
+                // Not a valid key
+                return;
+            }
+            // Unlock the engine
+            this._player.getMap().getEngine().unlock();
+        }
+    },
+    move: function (dX, dY, dZ) {
+        var newX = this._player.getX() + dX;
+        var newY = this._player.getY() + dY;
+        var newZ = this._player.getZ() + dZ;
+        // Try to move to the new cell
+        this._player.tryMove(newX, newY, newZ, this._player.getMap());
+    },
+    setGameEnded: function (gameEnded) {
+        this._gameEnded = gameEnded;
+    },
+    setSubScreen: function (subScreen) {
+        this._subScreen = subScreen;
+        // Refresh screen on changing the subscreen
+        Game.refresh();
+    },
+    showItemsSubScreen: function (subScreen, items, emptyMessage) {
+        if (items && subScreen.setup(this._player, items) > 0) {
+            this.setSubScreen(subScreen);
+        } else {
+            Game.sendMessage(this._player, emptyMessage);
+            Game.refresh();
+        }
+    }
+};
+
+Game.Screen.restScreen = {
+    setup: function () {
+        this._inputString = '';
+    },
+    render: function (display) {
+        var playScreen = Game.Screen.playScreen;
+        playScreen.renderTiles.call(playScreen, display);
+        display.drawText(0, Game.getScreenHeight() - 1, 'Turns to rest: ' + this._inputString);
+    },
+    handleInput: function (inputType, inputData) {
+        // input wait time
+        if (inputType == 'keydown') {
+            if (inputData.keyCode === ROT.VK_RETURN) {
+                var num = parseInt(this._inputString, 10);
+                if (isNaN(num)) {
+                    //bad number
+                } else {
+                    Game.Screen.playScreen._player.setBusy(true);
+                    Game.Screen.waitScreen.setup({ turnsToWait: num, action: 'Resting' });
+                    Game.Screen.playScreen.setSubScreen(Game.Screen.waitScreen);
+                }
+            } else if (inputData.keyCode === ROT.VK_BACK_SPACE) {
+                this._inputString = this._inputString.slice(0, -1)
+            }
+        } else if (inputType == 'keypress') {
+            var keyChar = String.fromCharCode(inputData.charCode);
+            if (!isNaN(parseInt(keyChar))) {
+                this._inputString += keyChar;
+            }
+        }
+        Game.refresh();
+    }
+};
+Game.Screen.startScreen = {
+    enter: function () { console.log("Entered start screen."); },
+    exit: function () { console.log("Exited start screen."); },
+    render: function (display) {
+        // Render our prompt to the screen
+        var title = 'Perpetual Dystopia Vault';
+        var prompt = 'Press [Enter] to start!';
+        var y = 5;
+        display.drawText(Game.getScreenWidth() / 2 - title.length / 2, y++, '%c{yellow}' + title);
+        display.drawText(Game.getScreenWidth() / 2 - prompt.length / 2, y++, prompt);
+    },
+    handleInput: function (inputType, inputData) {
+        // When [Enter] is pressed, go to the play screen
+        if (inputType === 'keydown') {
+            if (inputData.keyCode === ROT.VK_RETURN) {
+                Game.switchScreen(Game.Screen.playScreen);
+            }
+        }
+    }
+};
+Game.Screen.TargetBasedScreen = function (template) {
+    template = template || {};
+    // By default, our ok return does nothing and does not consume a turn.
+    this._okFunction = template['okFunction'] || function (x, y) {
+        return false;
+    };
+    // The defaut caption function simply returns an empty string.
+    this._captionFunction = template['captionFunction'] || function (x, y) {
+        return '';
+    }
+};
+
+Game.Screen.TargetBasedScreen.prototype.setup = function (player, startX, startY, offsetX, offsetY) {
+    this._player = player;
+    // Store original position. Subtract the offset to make life easy so we don't
+    // always have to remove it.
+    this._startX = startX - offsetX;
+    this._startY = startY - offsetY;
+    // Store current cursor position
+    this._cursorX = this._startX;
+    this._cursorY = this._startY;
+    // Store map offsets
+    this._offsetX = offsetX;
+    this._offsetY = offsetY;
+    // Cache the FOV
+    var visibleCells = {};
+    this._player.getMap().getFov(this._player.getZ()).compute(
+        this._player.getX(), this._player.getY(),
+        this._player.getSightRadius(),
+        function (x, y, radius, visibility) {
+            visibleCells[x + "," + y] = true;
+        });
+    this._visibleCells = visibleCells;
+};
+
+Game.Screen.TargetBasedScreen.prototype.render = function (display) {
+    var playScreen = Game.Screen.playScreen;
+    playScreen.renderTiles.call(playScreen, display);
+
+    // Draw a line from the start to the cursor.
+    var points = Game.Geometry.getLine(this._startX, this._startY, this._cursorX, this._cursorY);
+
+    var offsets = playScreen.getScreenOffsets();
+    var topLeftX = offsets.x;
+    var topLeftY = offsets.y;
+    var currentDepth = playScreen._player.getZ();
+    var map = playScreen._player.getMap();
+
+    // This object will keep track of all visible map cells
+    var visibleCells = {};
+    // Find all visible cells and update the object
+    map.getFov(currentDepth).compute(
+        this._player.getX(), this._player.getY(),
+        this._player.getSightRadius(),
+        function (x, y, radius, visibility) {
+            visibleCells[x + "," + y] = true;
+        });
+
+    // Render stars along the line.
+    for (var i = 0, l = points.length; i < l; i++) {
+        // Get the underlying glyph
+        var glyph = Game.Glyph.unknown;
+        var mapX = points[i].x + topLeftX;
+        var mapY = points[i].y + topLeftY;
+        if (map.isExplored(mapX, mapY, currentDepth)) {
+            // Fetch the glyph for the tile and render it to the screen
+            // at the offset position.
+            glyph = map.getTile(mapX, mapY, currentDepth);
+            var foreground = glyph.getForeground();
+            // If we are at a cell that is in the field of vision, we need
+            // to check if there are items or entities.
+            if (visibleCells[mapX + ',' + mapY]) {
+                // Check for entities first, since we want to draw entities over items.
+                var entity = map.getEntityAt(mapX, mapY, currentDepth);
+                if (entity) {
+                    glyph = entity;
+                } else {
+                    var items = map.getItemsAt(mapX, mapY, currentDepth);
+                    // If we have items, we want to render the top most item
+                    if (items) {
+                        glyph = items[items.length - 1];
+                    }
+                }
+                // Update the foreground color in case our glyph changed
+                foreground = glyph.getForeground();
+            }
+        }
+        display.draw(points[i].x, points[i].y, glyph.getChar(), 'white', 'darkgreen');
+    }
+
+    // Render the caption at the bottom.
+    display.drawText(0, Game.getScreenHeight() - 1,
+        this._captionFunction(this._cursorX + this._offsetX, this._cursorY + this._offsetY));
+};
+
+Game.Screen.TargetBasedScreen.prototype.handleInput = function (inputType, inputData) {
+    // Move the cursor
+    var refresh = true;
+    if (inputType == 'keydown') {
+        if (inputData.keyCode === ROT.VK_LEFT) {
+            this.moveCursor(-1, 0);
+        } else if (inputData.keyCode === ROT.VK_RIGHT) {
+            this.moveCursor(1, 0);
+        } else if (inputData.keyCode === ROT.VK_UP) {
+            this.moveCursor(0, -1);
+        } else if (inputData.keyCode === ROT.VK_DOWN) {
+            this.moveCursor(0, 1);
+        } else if (inputData.keyCode === ROT.VK_ESCAPE) {
+            Game.Screen.playScreen.setSubScreen(undefined);
+        } else if (inputData.keyCode === ROT.VK_RETURN) {
+            this.executeOkFunction();
+            refresh = false;
+        }
+    }
+    if (refresh) Game.refresh();
+};
+
+Game.Screen.TargetBasedScreen.prototype.moveCursor = function (dx, dy) {
+    // Make sure we stay within bounds.
+    this._cursorX = Math.max(0, Math.min(this._cursorX + dx, Game.getScreenWidth()));
+    // We have to save the last line for the caption.
+    this._cursorY = Math.max(0, Math.min(this._cursorY + dy, Game.getScreenHeight() - 1));
+};
+
+Game.Screen.TargetBasedScreen.prototype.executeOkFunction = function () {
+    // Switch back to the play screen.
+    Game.Screen.playScreen.setSubScreen(undefined);
+    // Call the OK function and end the player's turn if it return true.
+    if (this._okFunction(this._cursorX + this._offsetX, this._cursorY + this._offsetY)) {
+        this._player.getMap().getEngine().unlock();
+    }
+};
+Game.Screen.waitScreen = {
+    setup: function (template) {
+        this._turnsToWait = template['turnsToWait'] || 0;
+        this._action = template['action'] || 'Waiting';
+        this._onComplete = template['onComplete'] || function () { };
+        this._exiting = false;
+        this._cancel = false;
+    },
+    render: function (display) {
+        var playScreen = Game.Screen.playScreen;
+        playScreen.renderTiles.call(playScreen, display);
+
+        //Check for seen attackers
+        // todo replace with check for hostiles
+        var seenEnemies = playScreen._player.seenEntitiesWith(Game.EntityMixins.Attacker);
+
+        var alerts = playScreen._player.getAlerts();
+
+        display.drawText(0, Game.getScreenHeight() - 1, vsprintf('%s for %s turns...', [this._action, this._turnsToWait]));
+
+        // Escape from screen
+        if (seenEnemies.length > 0) {
+            this._exiting = true;
+            Game.sendMessage(playScreen._player, '%s interrupted by %s!', [this._action, seenEnemies[0].describeA()]);
+        }
+        if (alerts.length > 0) {
+            this._exiting = true;
+            Game.sendMessage(playScreen._player, '%s interrupted because %s!', [this._action, alerts.join(', ')]);
+        }
+        if (this._cancel) {
+            this._exiting = true;
+            Game.sendMessage(playScreen._player, '%s canceled', [this._action]);
+        }
+        if (this._turnsToWait <= 0) {
+            this._exiting = true;
+            this._onComplete();
+        }
+        if (this._exiting) {
+            Game.Screen.playScreen.setSubScreen(null);
+        }
+        else {
+            // delay unlocking to slow down the speed
+            setTimeout(() => {
+                this._turnsToWait--;
+
+                if (!this._exiting) playScreen._player.getMap().getEngine().unlock();
+            }, 100);
+        }
+    },
+    handleInput: function (inputType, inputData) {
+        //cancel
+        if (inputType == 'keydown') {
+            this._cancel = true;
+        }
+        return;
+    }
+};
+Game.Screen.winScreen = {
+    enter: function () { console.log("Entered win screen."); },
+    exit: function () { console.log("Exited win screen."); },
+    render: function (display) {
+        // Render our prompt to the screen
+        for (var i = 0; i < 22; i++) {
+            // Generate random background colors
+            var r = Math.round(Math.random() * 255);
+            var g = Math.round(Math.random() * 255);
+            var b = Math.round(Math.random() * 255);
+            var background = ROT.Color.toRGB([r, g, b]);
+            display.drawText(2, i + 1, "%b{" + background + "}You win!");
+        }
+    },
+    handleInput: function (inputType, inputData) {
+        // Nothing to do here      
+    }
+};
+Game.Screen.butcherScreen = new Game.Screen.ItemListScreen({
+    caption: 'What do you want to butcher?',
+    canSelect: true,
+    canSelectMultipleItems: true,
+    ok: function (selectedGroups) {
+        var keys = Object.keys(selectedGroups);
+        if (!this._player.canAddItems(keys.length)) {
+            Game.sendMessage(this._player, "You cannot hold that many items!");
+        }
+        var player = this._player;
+        var butcherable = this.butcherable;
+        //todo variable time for butchering
+        Game.Screen.waitScreen.setup({
+            turnsToWait: keys.length * 5,
+            action: 'Butchering',
+            onComplete: function () {
+                var remaining = [];
+                for (let i = 0; i < keys.length; i++) {
+                    const group = selectedGroups[keys[i]];
+                    var count = 0;
+                    group.forEach(item => {
+                        if (!butcherable.removeItem(item)) {
+                            console.log('failed to remove item when butchering');
+                        }
+                        if (player.addItem(item)) {
+                            count++;
+                        } else {
+                            remaining.push(item);
+                        }
+                    });
+                    if (count == 1) {
+                        Game.sendMessage(player, "You pick up %s.", [group[0].describeA()]);
+                    } else if (count > 1) {
+                        Game.sendMessage(player, "You pick up %s %s.", [count, group[0].describe(false, true)]);
+                    }
+                }
+                if (remaining.length > 0) {
+                    Game.sendMessage(player, "Your inventory is full! Some items have been dropped");
+                    player.getMap().setItemsAt(player.getX(), player.getY(), player.getZ(), remaining);
+                }
+            }
+        });
+        Game.Screen.playScreen.setSubScreen(Game.Screen.waitScreen);
+        return true;
+    }
+});
+Game.Screen.dropScreen = new Game.Screen.ItemListScreen({
+    caption: 'Choose the item you wish to drop',
+    canSelect: true,
+    canSelectMultipleItems: false,
+    ok: function (selectedGroups) {
+        // Drop the selected item
+        var items = selectedGroups[Object.keys(selectedGroups)[0]];
+        for (let i = 0; i < items.length; i++) {
+            const item = items[i];
+            this._player.removeItem(item);
+            this._map.addItem(this._player.getX(), this._player.getY(), this._player.getZ(), item);
+        }
+        return true;
+    }
+});
+Game.Screen.eatScreen = new Game.Screen.ItemListScreen({
+    caption: 'Choose the item you wish to eat',
+    canSelect: true,
+    canSelectMultipleItems: false,
+    isAcceptable: function (item) {
+        return item && item.hasMixin('Edible');
+    },
+    ok: function (selectedGroups) {
+        // Eat the item, removing it if there are no consumptions remaining.
+        var group = selectedGroups[Object.keys(selectedGroups)[0]];
+        var item = group[0];
+        Game.sendMessage(this._player, "You eat %s.", [item.describeThe()]);
+        item.eat(this._player);
+        if (!item.hasRemainingConsumptions()) {
+            this._player.removeItem(item);
+        }
+        return true;
+    }
+});
+// todo you can currently wear/wield multiple items,
+// if they fit in the same slots the last one will end up equipped
+Game.Screen.equipScreen = new Game.Screen.ItemListScreen({
+    caption: 'Choose the item you wish to equip',
+    canSelect: true,
+    canSelectMultipleItems: true,
+    isAcceptable: function (item) {
+        return item && item.hasMixin('Equippable');
+    },
+    ok: function (selectedGroups, unSelectedGroups) {
+        for (const key in selectedGroups) {
+            const group = selectedGroups[key];
+            const item = group[0];
+            if (!this._player.isEquipped(item)) {
+                this._player.equip(item);
+                this._player.removeItem(item);
+                Game.sendMessage(this._player, "You equip %s.", [item.describeThe()]);
+            }
+        }
+        return true;
+    }
+});
+Game.Screen.examineScreen = new Game.Screen.ItemListScreen({
+    caption: 'Choose the item you wish to examine',
+    canSelect: true,
+    canSelectMultipleItems: false,
+    isAcceptable: function (item) {
+        return true;
+    },
+    ok: function (selectedGroups) {
+        var keys = Object.keys(selectedGroups);
+        if (keys.length > 0) {
+            var group = selectedGroups[keys[0]];
+            item = group[0];
+            if (group.length == 1) {
+                Game.sendMessage(this._player, "It's %s (%s).",
+                [
+                    item.describeA(false),
+                    item.details()
+                ]);
+            } else if (group.length > 1) {
+                Game.sendMessage(this._player, "It's %s %s (%s).",
+                [
+                    group.length,
+                    item.describe(false, true),
+                    item.details()
+                ]); 
+            }
+        }
+        return true;
+    }
+});
+Game.Screen.inventoryScreen = new Game.Screen.ItemListScreen({
+    caption: 'Inventory',
+    canSelect: false
+});
+Game.Screen.pickupScreen = new Game.Screen.ItemListScreen({
+    caption: 'Choose the items you wish to pickup',
+    canSelect: true,
+    canSelectMultipleItems: true,
+    ok: function (selectedGroups, unSelectedGroups) {
+        //try add all, if can't add, put back on ground
+        var remaining = [];
+        for (const groupKey in selectedGroups) {
+            if (selectedGroups.hasOwnProperty(groupKey)) {
+                const group = selectedGroups[groupKey];
+                group.forEach(item => {
+                    if (!this._player.addItem(item)) {
+                        remaining.push(item);
+                    }
+                });
+            }
+        }
+
+        if (remaining.length > 0) {
+            Game.sendMessage(this._player, "Your inventory is full! Not all items were picked up.");
+        }
+
+        // add back the unselected items
+        for (const groupKey in unSelectedGroups) {
+            if (unSelectedGroups.hasOwnProperty(groupKey)) {
+                const group = unSelectedGroups[groupKey];
+                group.forEach(item => {
+                    remaining.push(item);
+                });
+            }
+        }
+
+        // put the remaining back down
+        this._map.setItemsAt(this._player.getX(), this._player.getY(), this._player.getZ(), remaining);
+        return true;
+    }
+});
+Game.Screen.unequipScreen = new Game.Screen.ItemListScreen({
+    caption: 'Choose the item you wish to unequip',
+    canSelect: true,
+    canSelectMultipleItems: true,
+    ok: function (selectedGroups, unSelectedGroups) {
+        for (const key in selectedGroups) {
+            const group = selectedGroups[key];
+            const item = group[0];
+            if (this._player.isEquipped(item)) {
+                this._player.addItem(item);
+                this._player.unequip(item);
+                Game.sendMessage(this._player, "You put away %s.", [item.describeThe()]);
+            }
+        }
+        return true;
+    }
+});
+Game.Screen.lookScreen = new Game.Screen.TargetBasedScreen({
+    captionFunction: function (x, y) {
+        var z = this._player.getZ();
+        var map = this._player.getMap();
+        // If the tile is explored, we can give a better capton
+        if (map.isExplored(x, y, z)) {
+            // If the tile isn't explored, we have to check if we can actually 
+            // see it before testing if there's an entity or item.
+            if (this._visibleCells[x + ',' + y]) {
+                var items = map.getItemsAt(x, y, z);
+                // If we have items, we want to render the top most item
+                // TODO option to see more
+                if (items) {
+                    var item = items[items.length - 1];
+                    return String.format('%s - %s (%s)',
+                        item.getRepresentation(),
+                        item.describeA(true),
+                        item.details());
+                    // Else check if there's an entity
+                } else if (map.getEntityAt(x, y, z)) {
+                    var entity = map.getEntityAt(x, y, z);
+                    return String.format('%s - %s (%s)',
+                        entity.getRepresentation(),
+                        entity.describeA(true),
+                        entity.details());
+                }
+            }
+            // If there was no entity/item or the tile wasn't visible, then use
+            // the tile information.
+            return String.format('%s - %s',
+                map.getTile(x, y, z).getRepresentation(),
+                map.getTile(x, y, z).getDescription());
+
+        } else {
+            // If the tile is not explored, show the null tile description.
+            return String.format('%s - %s',
+                Game.Tile.nullTile.getRepresentation(),
+                Game.Tile.nullTile.getDescription());
+        }
+    }
+});
+Game.Screen.rangedAttackScreen = new Game.Screen.TargetBasedScreen({
+    captionFunction: function (x, y) {
+        var z = this._player.getZ();
+        var map = this._player.getMap();
+        // If the tile is explored, we can give a better capton
+        if (map.isExplored(x, y, z)) {
+            // If the tile isn't explored, we have to check if we can actually 
+            // see it before testing if there's an entity or item.
+            if (this._visibleCells[x + ',' + y]) {
+                var entity = map.getEntityAt(x, y, z);
+                if (entity && entity.hasMixin(Game.EntityMixins.Destructible)) {
+                    return String.format('%s - hp: %s, defense: %s',
+                        entity.describeA(true),
+                        entity.getHp(),
+                        entity.getDefenseValue());
+                } else {
+                    // If the tile is not explored, show the null tile description.
+                    return 'There is nothing to fire at there';
+                }
+            }
+        }
+
+        return 'You cannot see there';
+    },
+    okFunction: function (x, y) {
+        var z = this._player.getZ();
+        var map = this._player.getMap();
+        var entity = map.getEntityAt(x, y, z);
+        if (entity) {
+            this._player.rangedAttack(entity);
+        } else {
+            // todo put an ammunition here
+        }
+        return true;
+    }
+});
 Game.Glyph = function(properties) {
     // Instantiate properties to default if they weren't passed
     properties = properties || {};
@@ -2166,122 +2157,49 @@ Game.Item.prototype.destroy = function(message) {
 Game.Item.prototype.stackableWith = function (other) {
     return this.describe() == other.describe() && this.details() == other.details();
 }
-// Create our Mixins namespace
-Game.EntityMixins = {};
-
-//Mixin template
-// Game.EntityMixins.Mixin = {
-//     name: 'Mixin',
-//     groupName: 'Mixin',
-//     init: function (template) { },
-//     listeners: {
-//         details: function () { },
-//         update: function () { }
-//     }
-// }
-
-// This signifies our entity can attack basic destructible enities
-Game.EntityMixins.MeleeAttacker = {
-    name: 'MeleeAttacker',
-    groupName: 'Attacker',
-    init: function (template) {
-        this._attackValue = template['attackValue'] || 1;
+Game.EntityMixins.Alertable = {
+    name: 'Alertable',
+    init: function () {
+        this._alerts = [];
     },
-    getMeleeAttackValue: function () {
-        var modifier = 0;
-        // If we can equip items, then have to take into 
-        // consideration weapons
-        if (this.hasMixin(Game.EntityMixins.Equipper)) {
-            this.getWeapons().forEach(weapon => {
-                if (weapon.hasMixin(Game.ItemMixins.Melee)) {
-                    modifier += weapon.getAttackValue();
-                }
-            });
-        }
-        return this._attackValue + modifier;
+    getAlerts: function () {
+        return this._alerts;
     },
-    increaseAttackValue: function (value) {
-        // If no value was passed, default to 2.
-        value = value || 2;
-        // Add to the attack value.
-        this._attackValue += value;
-        Game.sendMessage(this, "You look stronger!");
-    },
-    meleeAttack: function (target) {
-        // If the target is destructible, calculate the damage
-        // based on attack and defense value
-        if (target.hasMixin('Destructible')) {
-            var attack = this.getMeleeAttackValue();
-            var defense = target.getDefenseValue();
-            var max = Math.max(0, attack - defense);
-            var damage = 1 + Math.floor(Math.random() * max);
-
-            Game.sendMessage(this, 'You strike the %s for %d damage!',
-                [target.getName(), damage]);
-            Game.sendMessage(target, 'The %s strikes you for %d damage!',
-                [this.getName(), damage]);
-
-            target.takeDamage(this, damage);
-        }
+    clearAlerts: function () {
+        this._alerts = [];
     },
     listeners: {
-        details: function () {
-            return [{ key: 'melee attack', value: this.getMeleeAttackValue() }];
+        alert: function (text) {
+            this._alerts.push(text);
         }
     }
 };
-
-Game.EntityMixins.RangedAttacker = {
-    name: 'RangedAttacker',
-    groupName: 'Attacker',
+Game.EntityMixins.CorpseDropper = {
+    name: 'CorpseDropper',
     init: function (template) {
-        this._attackValue = template['attackValue'] || 1;
-    },
-    getRangedAttackValue: function () {
-        var modifier = 0;
-        // If we can equip items, then have to take into 
-        // consideration weapons
-        if (this.hasMixin(Game.EntityMixins.Equipper)) {
-            this.getWeapons().forEach(weapon => {
-                if (weapon.hasMixin(Game.ItemMixins.Ranged)) {
-                    modifier += weapon.getAttackValue();
-                }
-            });
-        }
-        return this._attackValue + modifier;
-    },
-    increaseAttackValue: function (value) {
-        // If no value was passed, default to 2.
-        value = value || 2;
-        // Add to the attack value.
-        this._attackValue += value;
-        Game.sendMessage(this, "You look stronger!");
-    },
-    rangedAttack: function (target) {
-        // If the target is destructible, calculate the damage
-        // based on attack and defense value
-        if (target.hasMixin('Destructible')) {
-            var attack = this.getRangedAttackValue();
-            var defense = target.getDefenseValue();
-            var max = Math.max(0, attack - defense);
-            var damage = 1 + Math.floor(Math.random() * max);
-
-            Game.sendMessage(this, 'You strike the %s for %d damage!',
-                [target.getName(), damage]);
-            Game.sendMessage(target, 'The %s strikes you for %d damage!',
-                [this.getName(), damage]);
-
-            target.takeDamage(this, damage);
-        }
+        // Chance of dropping a cropse (out of 100).
+        this._corpseDropRate = template['corpseDropRate'] || 100;
+        this._corpseButcherTemplates = template['corpseButcherTemplates'] || [];
     },
     listeners: {
-        details: function () {
-            return [{ key: 'ranged attack', value: this.getRangedAttackValue() }];
+        onDeath: function (attacker) {
+            // Check if we should drop a corpse.
+            if (Math.round(Math.random() * 100) <= this._corpseDropRate) {
+                // Create a new corpse item and drop it.
+                this._map.addItem(this.getX(), this.getY(), this.getZ(),
+                    Game.ItemRepository.create('corpse', {
+                        name: this._name + ' corpse',
+                        foreground: this._foreground,
+                        potentialTemplates: this._corpseButcherTemplates,
+                        x: this._x,
+                        y: this._y,
+                        z: this._z,
+                        map: this._map
+                    }));
+            }
         }
     }
 };
-
-// This mixin signifies an entity can take damage and be destroyed
 Game.EntityMixins.Destructible = {
     name: 'Destructible',
     init: function (template) {
@@ -2351,248 +2269,6 @@ Game.EntityMixins.Destructible = {
         }
     }
 };
-
-Game.EntityMixins.MessageRecipient = {
-    name: 'MessageRecipient',
-    init: function (template) {
-        this._messages = [];
-    },
-    receiveMessage: function (message) {
-        this._messages.push(message);
-    },
-    getMessages: function () {
-        return this._messages;
-    },
-    clearMessages: function () {
-        this._messages = [];
-    }
-};
-
-Game.EntityMixins.Alertable = {
-    name: 'Alertable',
-    init: function () {
-        this._alerts = [];
-    },
-    getAlerts: function () {
-        return this._alerts;
-    },
-    clearAlerts: function () {
-        this._alerts = [];
-    },
-    listeners: {
-        alert: function (text) {
-            this._alerts.push(text);
-        }
-    }
-}
-
-// This signifies our entity posseses a field of vision of a given radius.
-Game.EntityMixins.Sight = {
-    name: 'Sight',
-    groupName: 'Sight',
-    init: function (template) {
-        this._sightRadius = template['sightRadius'] || 5;
-        this._seenEntities = [];
-        this._seenItems = [];
-    },
-    getSightRadius: function () {
-        return this._sightRadius;
-    },
-    getSeenEntities: function () {
-        return this._seenEntities;
-    },
-    getSeenItems: function () {
-        return this._seenItems;
-    },
-    increaseSightRadius: function (value) {
-        // If no value was passed, default to 1.
-        value = value || 1;
-        // Add to sight radius.
-        this._sightRadius += value;
-        Game.sendMessage(this, "You are more aware of your surroundings!");
-    },
-    canSee: function (entity) {
-        return this._seenEntities.indexOf(entity) >= 0;
-    },
-    seenEntitiesWith: function (mixin) {
-        var seen = [];
-        this._seenEntities.forEach(entity => {
-            if (entity.hasMixin(mixin)) {
-                seen.push(entity);
-            }
-        });
-        return seen;
-    },
-    listeners: {
-        update: function () {
-            var seenEntities = [];
-            var seenItems = [];
-
-            var map = this.getMap();
-            var currentDepth = this.getZ();
-            var me = this;
-
-            map.getFov(currentDepth).compute(
-                this.getX(), this.getY(),
-                this.getSightRadius(),
-                function (x, y, radius, visibility) {
-                    var entity = map.getEntityAt(x, y, currentDepth);
-                    if (entity && entity != me) {
-                        seenEntities.push(entity);
-                    }
-
-                    var items = map.getItemsAt(x, y, currentDepth);
-                    // If we have items, we want to render the top most item
-                    if (items) {
-                        Array.prototype.push.apply(seenItems, items);
-                    }
-                });
-
-            this._seenEntities = seenEntities;
-            this._seenItems = seenItems;
-        }
-    }
-};
-
-// Message sending functions
-Game.sendMessage = function (recipient, message, args) {
-    // Make sure the recipient can receive the message 
-    // before doing any work.
-    if (recipient.hasMixin(Game.EntityMixins.MessageRecipient)) {
-        // If args were passed, then we format the message, else
-        // no formatting is necessary
-        if (args) {
-            message = vsprintf(message, args);
-        }
-        recipient.receiveMessage(message);
-    }
-};
-Game.sendMessageNearby = function (map, centerX, centerY, centerZ, message, args) {
-    // If args were passed, then we format the message, else
-    // no formatting is necessary
-    if (args) {
-        message = vsprintf(message, args);
-    }
-    // Get the nearby entities
-    entities = map.getEntitiesWithinRadius(centerX, centerY, centerZ, 5);
-    // Iterate through nearby entities, sending the message if
-    // they can receive it.
-    for (var i = 0; i < entities.length; i++) {
-        if (entities[i].hasMixin(Game.EntityMixins.MessageRecipient)) {
-            entities[i].receiveMessage(message);
-        }
-    }
-};
-
-Game.EntityMixins.InventoryHolder = {
-    name: 'InventoryHolder',
-    init: function (template) {
-        // Set up an empty inventory.
-        this._items = [];
-    },
-    getItems: function () {
-        return this._items;
-    },
-    addItem: function (item) {
-        if (!item instanceof Game.Item) return false;
-        this._items.push(item);
-        return true;
-    },
-    removeItem: function (item) {
-        var index = this._items.indexOf(item);
-        if (index >= 0) {
-            // Simply clear the inventory slot.
-            this._items.splice(index, 1);
-            return true;
-        }
-        return false;
-    },
-    canAddItem: function () {
-        return true;
-    },
-    canAddItems: function (num) {
-        return true;
-    }
-};
-
-Game.EntityMixins.FoodConsumer = {
-    name: 'FoodConsumer',
-    init: function (template) {
-        this._maxFullness = template['maxFullness'] || 1000;
-        // Start halfway to max fullness if no default value
-        this._fullness = template['fullness'] || (this._maxFullness / 2);
-        // Number of points to decrease fullness by every turn.
-        this._fullnessDepletionRate = template['fullnessDepletionRate'] || 1;
-    },
-    modifyFullnessBy: function (points) {
-        this._fullness = this._fullness + points;
-        if (this._fullness <= 0) {
-            this.kill("You have died of starvation!");
-        } else if (this._fullness > this._maxFullness) {
-            this.kill("You choke and die!");
-        }
-    },
-    getHungerState: function () {
-        // Fullness points per percent of max fullness
-        var perPercent = this._maxFullness / 100;
-        // 5% of max fullness or less = starving
-        if (this._fullness <= perPercent * 5) {
-            return 'Starving';
-            // 25% of max fullness or less = hungry
-        } else if (this._fullness <= perPercent * 25) {
-            return 'Hungry';
-            // 95% of max fullness or more = oversatiated
-        } else if (this._fullness >= perPercent * 95) {
-            return 'Oversatiated';
-            // 75% of max fullness or more = full
-        } else if (this._fullness >= perPercent * 75) {
-            return 'Full';
-            // Anything else = not hungry
-        } else {
-            return 'Not Hungry';
-        }
-    },
-    listeners: {
-        update: function () {
-            // Remove the standard depletion points
-            this.modifyFullnessBy(-this._fullnessDepletionRate);
-
-            // Fullness points per percent of max fullness
-            var perPercent = this._maxFullness / 100;
-            if (this._fullness <= perPercent * 5) {
-                this.raiseEvent('alert', 'you are starving');
-            }
-        }
-    }
-};
-
-Game.EntityMixins.CorpseDropper = {
-    name: 'CorpseDropper',
-    init: function (template) {
-        // Chance of dropping a cropse (out of 100).
-        this._corpseDropRate = template['corpseDropRate'] || 100;
-        this._corpseButcherTemplates = template['corpseButcherTemplates'] || [];
-    },
-    listeners: {
-        onDeath: function (attacker) {
-            // Check if we should drop a corpse.
-            if (Math.round(Math.random() * 100) <= this._corpseDropRate) {
-                // Create a new corpse item and drop it.
-                this._map.addItem(this.getX(), this.getY(), this.getZ(),
-                    Game.ItemRepository.create('corpse', {
-                        name: this._name + ' corpse',
-                        foreground: this._foreground,
-                        potentialTemplates: this._corpseButcherTemplates,
-                        x: this._x,
-                        y: this._y,
-                        z: this._z,
-                        map: this._map
-                    }));
-            }
-        }
-    }
-};
-
 Game.EntityMixins.Equipper = {
     name: 'Equipper',
     init: function (template) {
@@ -2645,7 +2321,6 @@ Game.EntityMixins.Equipper = {
         return armor;
     }
 };
-
 Game.EntityMixins.ExperienceGainer = {
     name: 'ExperienceGainer',
     init: function (template) {
@@ -2732,7 +2407,191 @@ Game.EntityMixins.ExperienceGainer = {
         }
     }
 };
+Game.EntityMixins.FoodConsumer = {
+    name: 'FoodConsumer',
+    init: function (template) {
+        this._maxFullness = template['maxFullness'] || 1000;
+        // Start halfway to max fullness if no default value
+        this._fullness = template['fullness'] || (this._maxFullness / 2);
+        // Number of points to decrease fullness by every turn.
+        this._fullnessDepletionRate = template['fullnessDepletionRate'] || 1;
+    },
+    modifyFullnessBy: function (points) {
+        this._fullness = this._fullness + points;
+        if (this._fullness <= 0) {
+            this.kill("You have died of starvation!");
+        } else if (this._fullness > this._maxFullness) {
+            this.kill("You choke and die!");
+        }
+    },
+    getHungerState: function () {
+        // Fullness points per percent of max fullness
+        var perPercent = this._maxFullness / 100;
+        // 5% of max fullness or less = starving
+        if (this._fullness <= perPercent * 5) {
+            return 'Starving';
+            // 25% of max fullness or less = hungry
+        } else if (this._fullness <= perPercent * 25) {
+            return 'Hungry';
+            // 95% of max fullness or more = oversatiated
+        } else if (this._fullness >= perPercent * 95) {
+            return 'Oversatiated';
+            // 75% of max fullness or more = full
+        } else if (this._fullness >= perPercent * 75) {
+            return 'Full';
+            // Anything else = not hungry
+        } else {
+            return 'Not Hungry';
+        }
+    },
+    listeners: {
+        update: function () {
+            // Remove the standard depletion points
+            this.modifyFullnessBy(-this._fullnessDepletionRate);
 
+            // Fullness points per percent of max fullness
+            var perPercent = this._maxFullness / 100;
+            if (this._fullness <= perPercent * 5) {
+                this.raiseEvent('alert', 'you are starving');
+            }
+        }
+    }
+};
+Game.EntityMixins.InventoryHolder = {
+    name: 'InventoryHolder',
+    init: function (template) {
+        // Set up an empty inventory.
+        this._items = [];
+    },
+    getItems: function () {
+        return this._items;
+    },
+    addItem: function (item) {
+        if (!item instanceof Game.Item) return false;
+        this._items.push(item);
+        return true;
+    },
+    removeItem: function (item) {
+        var index = this._items.indexOf(item);
+        if (index >= 0) {
+            // Simply clear the inventory slot.
+            this._items.splice(index, 1);
+            return true;
+        }
+        return false;
+    },
+    canAddItem: function () {
+        return true;
+    },
+    canAddItems: function (num) {
+        return true;
+    }
+};
+Game.EntityMixins.MeleeAttacker = {
+    name: 'MeleeAttacker',
+    groupName: 'Attacker',
+    init: function (template) {
+        this._attackValue = template['attackValue'] || 1;
+    },
+    getMeleeAttackValue: function () {
+        var modifier = 0;
+        // If we can equip items, then have to take into 
+        // consideration weapons
+        if (this.hasMixin(Game.EntityMixins.Equipper)) {
+            this.getWeapons().forEach(weapon => {
+                if (weapon.hasMixin(Game.ItemMixins.Melee)) {
+                    modifier += weapon.getAttackValue();
+                }
+            });
+        }
+        return this._attackValue + modifier;
+    },
+    increaseAttackValue: function (value) {
+        // If no value was passed, default to 2.
+        value = value || 2;
+        // Add to the attack value.
+        this._attackValue += value;
+        Game.sendMessage(this, "You look stronger!");
+    },
+    meleeAttack: function (target) {
+        // If the target is destructible, calculate the damage
+        // based on attack and defense value
+        if (target.hasMixin('Destructible')) {
+            var attack = this.getMeleeAttackValue();
+            var defense = target.getDefenseValue();
+            var max = Math.max(0, attack - defense);
+            var damage = 1 + Math.floor(Math.random() * max);
+
+            Game.sendMessage(this, 'You strike the %s for %d damage!',
+                [target.getName(), damage]);
+            Game.sendMessage(target, 'The %s strikes you for %d damage!',
+                [this.getName(), damage]);
+
+            target.takeDamage(this, damage);
+        }
+    },
+    listeners: {
+        details: function () {
+            return [{ key: 'melee attack', value: this.getMeleeAttackValue() }];
+        }
+    }
+};
+Game.EntityMixins.MessageRecipient = {
+    name: 'MessageRecipient',
+    init: function (template) {
+        this._messages = [];
+    },
+    receiveMessage: function (message) {
+        this._messages.push(message);
+    },
+    getMessages: function () {
+        return this._messages;
+    },
+    clearMessages: function () {
+        this._messages = [];
+    }
+};
+
+Game.sendMessage = function (recipient, message, args) {
+    // Make sure the recipient can receive the message 
+    // before doing any work.
+    if (recipient.hasMixin(Game.EntityMixins.MessageRecipient)) {
+        // If args were passed, then we format the message, else
+        // no formatting is necessary
+        if (args) {
+            message = vsprintf(message, args);
+        }
+        recipient.receiveMessage(message);
+    }
+};
+
+Game.sendMessageNearby = function (map, centerX, centerY, centerZ, message, args) {
+    // If args were passed, then we format the message, else
+    // no formatting is necessary
+    if (args) {
+        message = vsprintf(message, args);
+    }
+    // Get the nearby entities
+    entities = map.getEntitiesWithinRadius(centerX, centerY, centerZ, 5);
+    // Iterate through nearby entities, sending the message if
+    // they can receive it.
+    for (var i = 0; i < entities.length; i++) {
+        if (entities[i].hasMixin(Game.EntityMixins.MessageRecipient)) {
+            entities[i].receiveMessage(message);
+        }
+    }
+};
+Game.EntityMixins.PlayerStatGainer = {
+    name: 'PlayerStatGainer',
+    groupName: 'StatGainer',
+    listeners: {
+        onGainLevel: function () {
+            // Setup the gain stat screen and show it.
+            Game.Screen.gainStatScreen.setup(this);
+            Game.Screen.playScreen.setSubScreen(Game.Screen.gainStatScreen);
+        }
+    }
+};
 Game.EntityMixins.RandomStatGainer = {
     name: 'RandomStatGainer',
     groupName: 'StatGainer',
@@ -2749,27 +2608,160 @@ Game.EntityMixins.RandomStatGainer = {
         }
     }
 };
+Game.EntityMixins.RangedAttacker = {
+    name: 'RangedAttacker',
+    groupName: 'Attacker',
+    init: function (template) {
+        this._attackValue = template['attackValue'] || 1;
+    },
+    getRangedAttackValue: function () {
+        var modifier = 0;
+        // If we can equip items, then have to take into 
+        // consideration weapons
+        if (this.hasMixin(Game.EntityMixins.Equipper)) {
+            this.getWeapons().forEach(weapon => {
+                if (weapon.hasMixin(Game.ItemMixins.Ranged)) {
+                    modifier += weapon.getAttackValue();
+                }
+            });
+        }
+        return this._attackValue + modifier;
+    },
+    increaseAttackValue: function (value) {
+        // If no value was passed, default to 2.
+        value = value || 2;
+        // Add to the attack value.
+        this._attackValue += value;
+        Game.sendMessage(this, "You look stronger!");
+    },
+    rangedAttack: function (target) {
+        // If the target is destructible, calculate the damage
+        // based on attack and defense value
+        if (target.hasMixin('Destructible')) {
+            var attack = this.getRangedAttackValue();
+            var defense = target.getDefenseValue();
+            var max = Math.max(0, attack - defense);
+            var damage = 1 + Math.floor(Math.random() * max);
 
-Game.EntityMixins.PlayerStatGainer = {
-    name: 'PlayerStatGainer',
-    groupName: 'StatGainer',
+            Game.sendMessage(this, 'You strike the %s for %d damage!',
+                [target.getName(), damage]);
+            Game.sendMessage(target, 'The %s strikes you for %d damage!',
+                [this.getName(), damage]);
+
+            target.takeDamage(this, damage);
+        }
+    },
     listeners: {
-        onGainLevel: function () {
-            // Setup the gain stat screen and show it.
-            Game.Screen.gainStatScreen.setup(this);
-            Game.Screen.playScreen.setSubScreen(Game.Screen.gainStatScreen);
+        details: function () {
+            return [{ key: 'ranged attack', value: this.getRangedAttackValue() }];
         }
     }
 };
-//Actor template
-// Game.EntityMixins.Actor = {
-//     name: 'Actor',
-//     groupName: 'Actor',
-//     init: function (template) { },
-//     act: function () { },
-// }
+Game.EntityMixins.Sight = {
+    name: 'Sight',
+    groupName: 'Sight',
+    init: function (template) {
+        this._sightRadius = template['sightRadius'] || 5;
+        this._seenEntities = [];
+        this._seenItems = [];
+    },
+    getSightRadius: function () {
+        return this._sightRadius;
+    },
+    getSeenEntities: function () {
+        return this._seenEntities;
+    },
+    getSeenItems: function () {
+        return this._seenItems;
+    },
+    increaseSightRadius: function (value) {
+        // If no value was passed, default to 1.
+        value = value || 1;
+        // Add to sight radius.
+        this._sightRadius += value;
+        Game.sendMessage(this, "You are more aware of your surroundings!");
+    },
+    canSee: function (entity) {
+        return this._seenEntities.indexOf(entity) >= 0;
+    },
+    seenEntitiesWith: function (mixin) {
+        var seen = [];
+        this._seenEntities.forEach(entity => {
+            if (entity.hasMixin(mixin)) {
+                seen.push(entity);
+            }
+        });
+        return seen;
+    },
+    listeners: {
+        update: function () {
+            var seenEntities = [];
+            var seenItems = [];
 
-// Main player's actor mixin
+            var map = this.getMap();
+            var currentDepth = this.getZ();
+            var me = this;
+
+            map.getFov(currentDepth).compute(
+                this.getX(), this.getY(),
+                this.getSightRadius(),
+                function (x, y, radius, visibility) {
+                    var entity = map.getEntityAt(x, y, currentDepth);
+                    if (entity && entity != me) {
+                        seenEntities.push(entity);
+                    }
+
+                    var items = map.getItemsAt(x, y, currentDepth);
+                    // If we have items, we want to render the top most item
+                    if (items) {
+                        Array.prototype.push.apply(seenItems, items);
+                    }
+                });
+
+            this._seenEntities = seenEntities;
+            this._seenItems = seenItems;
+        }
+    }
+};
+Game.EntityMixins.FungusActor = {
+    name: 'FungusActor',
+    groupName: 'Actor',
+    init: function () {
+        this._growthsRemaining = 5;
+    },
+    act: function () {
+        this.raiseEvent('update');
+        // Check if we are going to try growing this turn
+        if (this._growthsRemaining > 0) {
+            if (Math.random() <= 0.02) {
+                // Generate the coordinates of a random adjacent square by
+                // generating an offset between [-1, 0, 1] for both the x and
+                // y directions. To do this, we generate a number from 0-2 and then
+                // subtract 1.
+                var xOffset = Math.floor(Math.random() * 3) - 1;
+                var yOffset = Math.floor(Math.random() * 3) - 1;
+                // Make sure we aren't trying to spawn on the same tile as us
+                if (xOffset != 0 || yOffset != 0) {
+                    // Check if we can actually spawn at that location, and if so
+                    // then we grow!
+                    if (this.getMap().isEmptyFloor(this.getX() + xOffset,
+                        this.getY() + yOffset,
+                        this.getZ())) {
+                        var entity = Game.EntityRepository.create('fungus');
+                        entity.setPosition(this.getX() + xOffset, this.getY() + yOffset,
+                            this.getZ());
+                        this.getMap().addEntity(entity);
+                        this._growthsRemaining--;
+                        // Send a message nearby!
+                        Game.sendMessageNearby(this.getMap(),
+                            entity.getX(), entity.getY(), entity.getZ(),
+                            'The fungus is spreading!');
+                    }
+                }
+            }
+        }
+    }
+};
 Game.EntityMixins.PlayerActor = {
     name: 'PlayerActor',
     groupName: 'Actor',
@@ -2811,47 +2803,6 @@ Game.EntityMixins.PlayerActor = {
         this._busy = value;
     },
 };
-
-Game.EntityMixins.FungusActor = {
-    name: 'FungusActor',
-    groupName: 'Actor',
-    init: function () {
-        this._growthsRemaining = 5;
-    },
-    act: function () {
-        this.raiseEvent('update');
-        // Check if we are going to try growing this turn
-        if (this._growthsRemaining > 0) {
-            if (Math.random() <= 0.02) {
-                // Generate the coordinates of a random adjacent square by
-                // generating an offset between [-1, 0, 1] for both the x and
-                // y directions. To do this, we generate a number from 0-2 and then
-                // subtract 1.
-                var xOffset = Math.floor(Math.random() * 3) - 1;
-                var yOffset = Math.floor(Math.random() * 3) - 1;
-                // Make sure we aren't trying to spawn on the same tile as us
-                if (xOffset != 0 || yOffset != 0) {
-                    // Check if we can actually spawn at that location, and if so
-                    // then we grow!
-                    if (this.getMap().isEmptyFloor(this.getX() + xOffset,
-                        this.getY() + yOffset,
-                        this.getZ())) {
-                        var entity = Game.EntityRepository.create('fungus');
-                        entity.setPosition(this.getX() + xOffset, this.getY() + yOffset,
-                            this.getZ());
-                        this.getMap().addEntity(entity);
-                        this._growthsRemaining--;
-                        // Send a message nearby!
-                        Game.sendMessageNearby(this.getMap(),
-                            entity.getX(), entity.getY(), entity.getZ(),
-                            'The fungus is spreading!');
-                    }
-                }
-            }
-        }
-    }
-};
-
 Game.EntityMixins.TaskActor = {
     name: 'TaskActor',
     groupName: 'Actor',
@@ -2924,138 +2875,6 @@ Game.EntityMixins.TaskActor = {
         }
     }
 };
-Game.ItemMixins = {};
-
-// Edible mixins
-Game.ItemMixins.Edible = {
-    name: 'Edible',
-    init: function (template) {
-        // Number of points to add to hunger
-        this._foodValue = template['foodValue'] || 5;
-        // Number of times the item can be consumed
-        this._maxConsumptions = template['consumptions'] || 1;
-        this._remainingConsumptions = this._maxConsumptions;
-    },
-    eat: function (entity) {
-        if (entity.hasMixin('FoodConsumer')) {
-            if (this.hasRemainingConsumptions()) {
-                entity.modifyFullnessBy(this._foodValue);
-                this._remainingConsumptions--;
-            }
-        }
-    },
-    hasRemainingConsumptions: function () {
-        return this._remainingConsumptions > 0;
-    },
-    describe: function (capitalize, plural) {
-        if (this._maxConsumptions != this._remainingConsumptions) {
-            return (capitalize ? 'P' : 'p') +'artly eaten ' + Game.Item.prototype.describe.call(this, false, plural);
-        } else {
-            return Game.Item.prototype.describe.call(this, capitalize, plural);
-        }
-    },
-    listeners: {
-        details: function () {
-            return [{ key: 'food', value: this._foodValue + 'x' + this._remainingConsumptions }];
-        }
-    }
-};
-
-// Equipment mixins
-
-Game.ItemSlots = {
-    Head: 'head',
-    Chest: 'chest',
-    //Legs: 'legs',
-    MainHand: 'main hand',
-    //OffHand: 'off hand',
-};
-
-Game.ItemMixins.Equippable = {
-    name: 'Equippable',
-    init: function (template) {
-        this._slot = template['slot'];
-    },
-    getSlot: function () {
-        return this._slot;
-    },
-    listeners: {
-        details: function () {
-            var results = [];
-            results.push({ key: 'slot', value: this.getSlot() });
-            return results;
-        }
-    }
-};
-
-Game.ItemMixins.Melee = {
-    name: 'Melee',
-    groupName: 'Wieldable',
-    init: function (template) {
-        this._attackValue = template['attackValue'] || 0;
-    },
-    getAttackValue: function () {
-        return this._attackValue;
-    },
-    listeners: {
-        details: function () {
-            var results = [];
-            results.push({ key: 'melee attack', value: this.getAttackValue() });
-            return results;
-        }
-    }
-};
-
-Game.ItemMixins.Ranged = {
-    name: 'Ranged',
-    groupName: 'Wieldable',
-    init: function (template) {
-        this._attackValue = template['attackValue'] || 0;
-        this._range = template['range'] || 0;
-        this._ammunitionType = template['ammunitionType'] || 0;
-    },
-    getAttackValue: function () {
-        return this._attackValue;
-    },
-    getRange: function () {
-        return this._range;
-    },
-    getAmmunitionType: function () {
-        return this._ammunitionType;
-    },
-    listeners: {
-        details: function () {
-            var results = [];
-            results.push({ key: 'ranged attack', value: this.getAttackValue() });
-            results.push({ key: 'range', value: this.getRange() });
-            results.push({ key: 'ammo', value: this.getAmmunitionType() });
-            return results;
-        }
-    }
-};
-
-Game.ItemMixins.Wearable = {
-    name: 'Wearable',
-    init: function (template) {
-        this._defenseValue = template['defenseValue'] || 0;
-    },
-    getDefenseValue: function () {
-        return this._defenseValue;
-    },
-    listeners: {
-        details: function () {
-            var results = [];
-            results.push({ key: 'defense', value: this.getDefenseValue() });
-            return results;
-        }
-    }
-};
-
-Game.AmmunitionTypes = {
-    Shot: 'shot',
-    Arrow: 'arrow',
-};
-
 Game.ItemMixins.Ammunition = {
     name: 'Ammunition',
     init: function (template) {
@@ -3077,7 +2896,6 @@ Game.ItemMixins.Ammunition = {
         }
     }
 };
-
 Game.ItemMixins.Butcherable = {
     name: 'Butcherable',
     init: function (template) {
@@ -3107,7 +2925,6 @@ Game.ItemMixins.Butcherable = {
         }
     }
 };
-
 Game.ItemMixins.Decays = {
     name: 'Decays',
     init: function (template) {
@@ -3141,6 +2958,115 @@ Game.ItemMixins.Decays = {
                 Game.sendMessageNearby(this.getMap(), this.getX(), this.getY(), this.getZ(), 'The %s rotted away!', [this.getName()]);
                 this.destroy();
             }
+        }
+    }
+};
+Game.ItemMixins.Edible = {
+    name: 'Edible',
+    init: function (template) {
+        // Number of points to add to hunger
+        this._foodValue = template['foodValue'] || 5;
+        // Number of times the item can be consumed
+        this._maxConsumptions = template['consumptions'] || 1;
+        this._remainingConsumptions = this._maxConsumptions;
+    },
+    eat: function (entity) {
+        if (entity.hasMixin('FoodConsumer')) {
+            if (this.hasRemainingConsumptions()) {
+                entity.modifyFullnessBy(this._foodValue);
+                this._remainingConsumptions--;
+            }
+        }
+    },
+    hasRemainingConsumptions: function () {
+        return this._remainingConsumptions > 0;
+    },
+    describe: function (capitalize, plural) {
+        if (this._maxConsumptions != this._remainingConsumptions) {
+            return (capitalize ? 'P' : 'p') +'artly eaten ' + Game.Item.prototype.describe.call(this, false, plural);
+        } else {
+            return Game.Item.prototype.describe.call(this, capitalize, plural);
+        }
+    },
+    listeners: {
+        details: function () {
+            return [{ key: 'food', value: this._foodValue + 'x' + this._remainingConsumptions }];
+        }
+    }
+};
+Game.ItemMixins.Equippable = {
+    name: 'Equippable',
+    init: function (template) {
+        this._slot = template['slot'];
+    },
+    getSlot: function () {
+        return this._slot;
+    },
+    listeners: {
+        details: function () {
+            var results = [];
+            results.push({ key: 'slot', value: this.getSlot() });
+            return results;
+        }
+    }
+};
+Game.ItemMixins.Melee = {
+    name: 'Melee',
+    groupName: 'Wieldable',
+    init: function (template) {
+        this._attackValue = template['attackValue'] || 0;
+    },
+    getAttackValue: function () {
+        return this._attackValue;
+    },
+    listeners: {
+        details: function () {
+            var results = [];
+            results.push({ key: 'melee attack', value: this.getAttackValue() });
+            return results;
+        }
+    }
+};
+Game.ItemMixins.Ranged = {
+    name: 'Ranged',
+    groupName: 'Wieldable',
+    init: function (template) {
+        this._attackValue = template['attackValue'] || 0;
+        this._range = template['range'] || 0;
+        this._ammunitionType = template['ammunitionType'] || 0;
+    },
+    getAttackValue: function () {
+        return this._attackValue;
+    },
+    getRange: function () {
+        return this._range;
+    },
+    getAmmunitionType: function () {
+        return this._ammunitionType;
+    },
+    listeners: {
+        details: function () {
+            var results = [];
+            results.push({ key: 'ranged attack', value: this.getAttackValue() });
+            results.push({ key: 'range', value: this.getRange() });
+            results.push({ key: 'ammo', value: this.getAmmunitionType() });
+            return results;
+        }
+    }
+};
+Game.ItemMixins.Wearable = {
+    name: 'Wearable',
+    init: function (template) {
+        this._defenseValue = template['defenseValue'] || 0;
+    },
+    getDefenseValue: function () {
+        return this._defenseValue;
+    },
+    listeners: {
+        details: function () {
+            var results = [];
+            results.push({ key: 'defense', value: this.getDefenseValue() });
+            return results;
         }
     }
 };

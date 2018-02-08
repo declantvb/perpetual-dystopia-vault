@@ -57,6 +57,11 @@ var Game =  {
     }
 };
 
+// set up some holder objects
+Game.Screen = {};
+Game.EntityMixins = {};
+Game.ItemMixins = {};
+
 window.onload = function() {
     // Check if rot.js can work on this browser
     if (!ROT.isSupported()) {
