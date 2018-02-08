@@ -7,11 +7,15 @@
     "express": "^4.16.2"
   },
   "devDependencies": {
-    "nodemon": "^1.14.12"
+    "del": "^3.0.0",
+    "gulp": "^3.9.1",
+    "gulp-concat": "^2.6.1",
+    "gulp-nodemon": "^2.2.1",
+    "gulp-watch": "^5.0.0"
   },
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-    "start": "nodemon server.js"
+    "start": "gulp"
   },
   "repository": {
     "type": "git",

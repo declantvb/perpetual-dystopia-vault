@@ -317,7 +317,7 @@ Game.Screen.playScreen = {
         Game.refresh();
     },
     showItemsSubScreen: function (subScreen, items, emptyMessage) {
-        if (items && subScreen.setup(this._player, items, this._map) > 0) {
+        if (items && subScreen.setup(this._player, items) > 0) {
             this.setSubScreen(subScreen);
         } else {
             Game.sendMessage(this._player, emptyMessage);

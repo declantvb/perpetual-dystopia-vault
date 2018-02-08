@@ -331,7 +331,6 @@ Game.EntityMixins.InventoryHolder = {
         return true;
     },
     removeItem: function (item) {
-        // If we can equip items, then make sure we unequip the item we are removing.
         var index = this._items.indexOf(item);
         if (index >= 0) {
             // Simply clear the inventory slot.
